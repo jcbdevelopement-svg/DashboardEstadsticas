@@ -3,3 +3,19 @@
 @media(max-width:1100px){.metric-grid{grid-template-columns:repeat(3,1fr)}.metric-grid.four{grid-template-columns:repeat(2,1fr)}.insight-grid{grid-template-columns:repeat(2,1fr)}.sync{display:none}}
 @media(max-width:760px){aside{transform:translateX(-100%);transition:.2s}aside.open{transform:none;box-shadow:15px 0 50px #0002}.logo>button{display:block}main{margin:0;padding:20px 14px}.hamb{display:block;padding:0;margin-right:5px}header{justify-content:flex-start}.header-actions{margin-left:auto}.period,.sync{display:none!important}.header-actions .primary{font-size:0;width:38px;padding:0;justify-content:center}.metric-grid,.metric-grid.four,.insight-grid,.report-grid{grid-template-columns:1fr 1fr}.two-cols{grid-template-columns:1fr}.chart-summary{gap:18px}.toolbar .filter{display:none}.search{width:auto;flex:1}.form-grid{grid-template-columns:1fr}.calculation{grid-template-columns:1fr 1fr;gap:12px}.report-hero{align-items:flex-start;gap:18px;flex-direction:column}}
 @media(max-width:440px){.metric-grid,.metric-grid.four,.insight-grid,.report-grid{grid-template-columns:1fr}.chart-summary{display:grid;grid-template-columns:1fr 1fr}.segmented{display:none}.metric strong{font-size:22px}}
+
+/* JCB Developement brand system */
+:root{--brand:#8b2cf5;--brand-dark:#6120aa;--brand-soft:#f3eaff;background:#f5f6f8}
+aside{background:linear-gradient(180deg,#fff 0%,#f6f6f8 100%);border-right-color:#dedfe4;padding-top:18px}
+.logo{height:62px;padding:0 4px;display:flex;align-items:center}
+.logo img{width:182px;height:60px;object-fit:contain;object-position:left center}
+.logo>button{margin-left:auto}
+nav button:hover,.aside-bottom>button:hover{background:#f1edf6;color:#6320ae}
+nav button.active{background:var(--brand-soft);color:#7423cc;box-shadow:inset 3px 0 var(--brand)}
+.primary{border-color:#7623d0!important;background:var(--brand)!important;box-shadow:0 3px 10px #8b2cf538}
+.purple{background:var(--brand)}
+.insight small,.text-btn,.empty>svg,.report-hero span{color:var(--brand)!important}
+.user>div{border-radius:9px;background:#e7e7ec;overflow:hidden}
+.user>div img{width:42px;height:42px;object-fit:contain}
+.user b{color:#3d3546}
+@media(max-width:760px){.logo img{width:170px}.logo>button{display:block}}
