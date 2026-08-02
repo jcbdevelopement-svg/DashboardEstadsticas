@@ -585,7 +585,7 @@ function SalesPage({ sales, open }: { sales: Sale[]; open: () => void }) {
   const list = sales.filter((s) =>
     (s.payment_method + s.status + (s.notes || "") + (s.sale_items?.map((i) => i.products?.name).join(" ") || "")).toLowerCase().includes(q.toLowerCase()),
   );
-  const groups = Object.entries(list.reduce<Record<string, Sale[]>>((all, sale) => { const key = statusLabel(sale.status); (all[key] ||= []).push(sale); return all; }, {}));
+  const groups = Object.entries(list.reduce<Record<string, Sale[]>>((all, sale) => { const key = statusLabel(sale.status); (all[key] ||= []).push(sale); return all; }, {})).sort(([a], [b]) => a.localeCompare(b, "es")).map(([key, group]) => [key, group.sort((a, b) => (a.sale_items?.map((i) => i.products?.name).join(" ") || "Venta").localeCompare(b.sale_items?.map((i) => i.products?.name).join(" ") || "Venta", "es"))] as [string, Sale[]]);
   const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); next.has(key) ? next.delete(key) : next.add(key); return next; });
   return (
     <>
@@ -654,6 +654,7 @@ function ProductsPage({ items, open, reload, notify }: { items: Product[]; open:
     const category = product.category?.trim() || "Sin categoría";
     (all[category] ||= []).push(product); return all;
   }, {})).sort(([a], [b]) => a.localeCompare(b, "es")), [list]);
+  groups.forEach(([, products]) => products.sort((a, b) => a.name.localeCompare(b.name, "es")));
   const toggle = (category: string) => setCollapsed((current) => { const next = new Set(current); next.has(category) ? next.delete(category) : next.add(category); return next; });
   return <>
     <Toolbar q={q} setQ={setQ} button="Agregar producto" action={() => open()} />
@@ -685,7 +686,7 @@ function ExpensesPage({
       (x.name + x.category).toLowerCase().includes(q.toLowerCase()),
     ),
     sum = list.reduce((a, x) => a + Number(x.amount), 0);
-  const groups = Object.entries(list.reduce<Record<string, Expense[]>>((all, expense) => { const key = expense.category || "Sin categoría"; (all[key] ||= []).push(expense); return all; }, {})).sort(([a], [b]) => a.localeCompare(b, "es"));
+  const groups = Object.entries(list.reduce<Record<string, Expense[]>>((all, expense) => { const key = expense.category || "Sin categoría"; (all[key] ||= []).push(expense); return all; }, {})).sort(([a], [b]) => a.localeCompare(b, "es")).map(([key, group]) => [key, group.sort((a, b) => a.name.localeCompare(b.name, "es"))] as [string, Expense[]]);
   const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); next.has(key) ? next.delete(key) : next.add(key); return next; });
   return (
     <>
@@ -723,7 +724,7 @@ function PaymentsPage({
       .toLowerCase()
       .includes(q.toLowerCase()),
   );
-  const groups = Object.entries(list.reduce<Record<string, Payment[]>>((all, payment) => { const key = statusLabel(payment.status); (all[key] ||= []).push(payment); return all; }, {}));
+  const groups = Object.entries(list.reduce<Record<string, Payment[]>>((all, payment) => { const key = statusLabel(payment.status); (all[key] ||= []).push(payment); return all; }, {})).sort(([a], [b]) => a.localeCompare(b, "es")).map(([key, group]) => [key, group.sort((a, b) => a.concept.localeCompare(b.concept, "es"))] as [string, Payment[]]);
   const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); next.has(key) ? next.delete(key) : next.add(key); return next; });
   return (
     <>
