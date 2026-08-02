@@ -574,18 +574,28 @@ function groupSales(sales: Sale[]) {
     });
   return [...m.values()].slice(-31);
 }
+function GroupSummary({ count, groups, collapsed, setCollapsed, label }: { count: number; groups: string[]; collapsed: Set<string>; setCollapsed: (value: Set<string>) => void; label: string }) {
+  return <div className="products-summary"><span><b>{count}</b> {label} en <b>{groups.length}</b> grupos</span>{groups.length > 0 && <div><button onClick={() => setCollapsed(new Set())}>Expandir todas</button><button onClick={() => setCollapsed(new Set(groups))}>Minimizar todas</button></div>}</div>;
+}
+function CollapsibleGroup({ title, count, noun, collapsed, toggle, children }: { title: string; count: number; noun: string; collapsed: boolean; toggle: () => void; children: any }) {
+  return <section className="panel table-panel product-category"><button className="category-bar" onClick={toggle} aria-expanded={!collapsed}><span><b>{title}</b><small>{count} {count === 1 ? noun.replace(/s$/, "") : noun}</small></span><ChevronDown className={collapsed ? "" : "open"} /></button>{!collapsed && children}</section>;
+}
 function SalesPage({ sales, open }: { sales: Sale[]; open: () => void }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(""), [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const list = sales.filter((s) =>
-    (s.payment_method + s.status).toLowerCase().includes(q.toLowerCase()),
+    (s.payment_method + s.status + (s.notes || "") + (s.sale_items?.map((i) => i.products?.name).join(" ") || "")).toLowerCase().includes(q.toLowerCase()),
   );
+  const groups = Object.entries(list.reduce<Record<string, Sale[]>>((all, sale) => { const key = statusLabel(sale.status); (all[key] ||= []).push(sale); return all; }, {}));
+  const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); next.has(key) ? next.delete(key) : next.add(key); return next; });
   return (
     <>
       <Toolbar q={q} setQ={setQ} button="Nueva venta" action={open} />
-      <SalesTable sales={list} title="Todas las ventas" />
+      <GroupSummary count={list.length} groups={groups.map(([key]) => key)} collapsed={collapsed} setCollapsed={setCollapsed} label="ventas" />
+      {list.length ? groups.map(([key, group]) => <CollapsibleGroup key={key} title={key} count={group.length} noun="ventas" collapsed={!q && collapsed.has(key)} toggle={() => toggle(key)}><SalesRows sales={group} /></CollapsibleGroup>) : <section className="panel"><Empty text="No hay ventas para mostrar." /></section>}
     </>
   );
 }
+function SalesRows({ sales }: { sales: Sale[] }) { return <div className="table-wrap"><table><thead><tr><th>FECHA</th><th>PRODUCTOS</th><th>TOTAL</th><th>COSTO</th><th>GANANCIA</th><th>MÉTODO</th><th>ESTADO</th></tr></thead><tbody>{sales.map((s) => <tr key={s.id}><td>{date(s.sold_at)}</td><td><b>{s.sale_items?.map((i) => i.products?.name).join(", ") || "Venta"}</b></td><td>{ars.format(s.total)}</td><td>{ars.format(s.total_cost)}</td><td className="profit">{ars.format(s.profit)}</td><td>{s.payment_method}</td><td><Status value={s.status} /></td></tr>)}</tbody></table></div>; }
 function SalesTable({ sales, title }: { sales: Sale[]; title: string }) {
   return (
     <section className="panel table-panel">
@@ -670,11 +680,13 @@ function ExpensesPage({
   reload: () => Promise<void>;
   notify: (s: string) => void;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(""), [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const list = items.filter((x) =>
       (x.name + x.category).toLowerCase().includes(q.toLowerCase()),
     ),
     sum = list.reduce((a, x) => a + Number(x.amount), 0);
+  const groups = Object.entries(list.reduce<Record<string, Expense[]>>((all, expense) => { const key = expense.category || "Sin categoría"; (all[key] ||= []).push(expense); return all; }, {})).sort(([a], [b]) => a.localeCompare(b, "es"));
+  const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); next.has(key) ? next.delete(key) : next.add(key); return next; });
   return (
     <>
       <Toolbar
@@ -689,32 +701,8 @@ function ExpensesPage({
         <Metric title="Últimos 7 días" value={ars.format(daySum(items, 6))} />
         <Metric title="Últimos 30 días" value={ars.format(daySum(items, 29))} />
       </section>
-      <SimpleTable
-        heads={["GASTO", "CATEGORÍA", "FECHA", "MONTO", "ACCIONES"]}
-        empty="No hay gastos registrados."
-      >
-        {list.map((e) => (
-          <tr>
-            <td>
-              <b>{e.name}</b>
-            </td>
-            <td>{e.category}</td>
-            <td>{date(e.expense_date)}</td>
-            <td>{ars.format(e.amount)}</td>
-            <td>
-              <button className="row-action" onClick={() => open(e)}>
-                Editar
-              </button>
-              <Delete
-                table="expenses"
-                id={e.id}
-                reload={reload}
-                notify={notify}
-              />
-            </td>
-          </tr>
-        ))}
-      </SimpleTable>
+      <GroupSummary count={list.length} groups={groups.map(([key]) => key)} collapsed={collapsed} setCollapsed={setCollapsed} label="gastos" />
+      {list.length ? groups.map(([key, group]) => <CollapsibleGroup key={key} title={key} count={group.length} noun="gastos" collapsed={!q && collapsed.has(key)} toggle={() => toggle(key)}><div className="table-wrap"><table><thead><tr><th>GASTO</th><th>FECHA</th><th>MONTO</th><th>ACCIONES</th></tr></thead><tbody>{group.map((e) => <tr key={e.id}><td><b>{e.name}</b></td><td>{date(e.expense_date)}</td><td>{ars.format(e.amount)}</td><td><button className="row-action" onClick={() => open(e)}>Editar</button><Delete table="expenses" id={e.id} reload={reload} notify={notify} /></td></tr>)}</tbody></table></div></CollapsibleGroup>) : <section className="panel"><Empty text="No hay gastos registrados." /></section>}
     </>
   );
 }
@@ -729,12 +717,14 @@ function PaymentsPage({
   reload: () => Promise<void>;
   notify: (s: string) => void;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(""), [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const list = items.filter((x) =>
     (x.concept + x.payment_method + x.status)
       .toLowerCase()
       .includes(q.toLowerCase()),
   );
+  const groups = Object.entries(list.reduce<Record<string, Payment[]>>((all, payment) => { const key = statusLabel(payment.status); (all[key] ||= []).push(payment); return all; }, {}));
+  const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); next.has(key) ? next.delete(key) : next.add(key); return next; });
   return (
     <>
       <Toolbar
@@ -743,35 +733,8 @@ function PaymentsPage({
         button="Registrar pago"
         action={() => open()}
       />
-      <SimpleTable
-        heads={["CONCEPTO", "MÉTODO", "FECHA", "MONTO", "ESTADO", "ACCIONES"]}
-        empty="No hay pagos registrados."
-      >
-        {list.map((p) => (
-          <tr>
-            <td>
-              <b>{p.concept}</b>
-            </td>
-            <td>{p.payment_method}</td>
-            <td>{date(p.payment_date)}</td>
-            <td>{ars.format(p.amount)}</td>
-            <td>
-              <Status value={p.status} />
-            </td>
-            <td>
-              <button className="row-action" onClick={() => open(p)}>
-                Editar
-              </button>
-              <Delete
-                table="payments"
-                id={p.id}
-                reload={reload}
-                notify={notify}
-              />
-            </td>
-          </tr>
-        ))}
-      </SimpleTable>
+      <GroupSummary count={list.length} groups={groups.map(([key]) => key)} collapsed={collapsed} setCollapsed={setCollapsed} label="pagos" />
+      {list.length ? groups.map(([key, group]) => <CollapsibleGroup key={key} title={key} count={group.length} noun="pagos" collapsed={!q && collapsed.has(key)} toggle={() => toggle(key)}><div className="table-wrap"><table><thead><tr><th>CONCEPTO</th><th>MÉTODO</th><th>FECHA</th><th>MONTO</th><th>ESTADO</th><th>ACCIONES</th></tr></thead><tbody>{group.map((p) => <tr key={p.id}><td><b>{p.concept}</b></td><td>{p.payment_method}</td><td>{date(p.payment_date)}</td><td>{ars.format(p.amount)}</td><td><Status value={p.status} /></td><td><button className="row-action" onClick={() => open(p)}>Editar</button><Delete table="payments" id={p.id} reload={reload} notify={notify} /></td></tr>)}</tbody></table></div></CollapsibleGroup>) : <section className="panel"><Empty text="No hay pagos registrados." /></section>}
     </>
   );
 }
@@ -1357,17 +1320,20 @@ function Toolbar({
     </div>
   );
 }
-function Status({ value }: { value: string }) {
-  const names: any = {
+function statusLabel(value: string) {
+  const names: Record<string, string> = {
     completed: "Completada",
     pending: "Pendiente",
     cancelled: "Cancelada",
     paid: "Pagado",
   };
+  return names[value] || value;
+}
+function Status({ value }: { value: string }) {
   return (
     <span className={"badge " + value}>
       <i />
-      {names[value] || value}
+      {statusLabel(value)}
     </span>
   );
 }
