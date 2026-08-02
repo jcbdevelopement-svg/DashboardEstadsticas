@@ -249,7 +249,7 @@ function MonthlyRetentionAlert({ sales, expenses, payments, reload, notify }: {
   const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}-01`;
   const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(month);
   useEffect(() => {
-    if (argentina.getDate() > 5) return;
+    if (argentina.getDate() > 2) return;
     supabase.from("monthly_archives").select("id").eq("period_month", monthKey).maybeSingle().then(({ data }) => setVisible(!data));
   }, [monthKey]);
   if (!visible) return null;
@@ -288,7 +288,7 @@ function MonthlyRetentionAlert({ sales, expenses, payments, reload, notify }: {
     if (error) { notify(`El respaldo se descargó, pero no se borraron los datos: ${error.message}`); setWorking(false); return; }
     setVisible(false); await reload(); notify("Respaldo descargado y datos mensuales eliminados.");
   };
-  return <section className="retention-alert" role="alert"><AlertTriangle /><div><strong>Descargá el respaldo de {monthLabel}</strong><p>Se descargará un PDF. Después, los datos de ese mes se eliminarán. Si no lo hacés, se borrarán automáticamente el día 5.</p></div><button onClick={downloadAndDelete} disabled={working}>{working ? <Loader2 className="spin" /> : <Download />}{working ? "Procesando..." : "Descargar PDF"}</button></section>;
+  return <section className="retention-alert" role="alert"><AlertTriangle /><div><strong>Descargá el respaldo de {monthLabel}</strong><p>Se descargará un PDF. Después, los datos de ese mes se eliminarán. Si no lo hacés, se borrarán automáticamente el día 2.</p></div><button onClick={downloadAndDelete} disabled={working}>{working ? <Loader2 className="spin" /> : <Download />}{working ? "Procesando..." : "Descargar PDF"}</button></section>;
 }
 function Content({
   page,
@@ -388,8 +388,8 @@ function SettingsPage({ session, notify }: { session: Session; notify: (message:
     </section>
     <section className="panel settings-card">
       <div className="panel-head"><div><h2>Respaldos automáticos</h2><p>Protección mensual de tus datos.</p></div></div>
-      <div className="setting-info"><b>Días 1 al 5</b><span>Aparece el aviso para descargar el PDF del mes anterior.</span></div>
-      <div className="setting-info"><b>Día 5, 03:00</b><span>Si no se descargó, ventas, gastos y pagos del mes vencido se eliminan automáticamente.</span></div>
+      <div className="setting-info"><b>Días 1 y 2</b><span>Aparece el aviso para descargar el PDF del mes anterior.</span></div>
+      <div className="setting-info"><b>Día 2, 03:00</b><span>Si no se descargó, ventas, gastos y pagos del mes vencido se eliminan automáticamente.</span></div>
       <div className="setting-info"><b>Siempre conservados</b><span>Productos y cuenta de usuario.</span></div>
     </section>
     <section className="panel settings-card categories-card">
