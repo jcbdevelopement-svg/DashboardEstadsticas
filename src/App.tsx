@@ -17,6 +17,7 @@ import {
 import {
   ArrowDownRight,
   ArrowUpRight,
+  AlertTriangle,
   BarChart3,
   Boxes,
   CalendarDays,
@@ -182,6 +183,9 @@ export default function App() {
             <button onClick={data.reload}>Reintentar</button>
           </div>
         )}
+        {!data.loading && (
+          <MonthlyRetentionAlert sales={data.sales} expenses={data.expenses} payments={data.payments} reload={data.reload} notify={notify} />
+        )}
         {data.loading ? (
           <Loading />
         ) : (
@@ -215,6 +219,40 @@ export default function App() {
       )}
     </div>
   );
+}
+
+function MonthlyRetentionAlert({ sales, expenses, payments, reload, notify }: {
+  sales: Sale[]; expenses: Expense[]; payments: Payment[];
+  reload: () => Promise<void>; notify: (message: string) => void;
+}) {
+  const [visible, setVisible] = useState(false), [working, setWorking] = useState(false);
+  const argentina = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" }));
+  const month = new Date(argentina.getFullYear(), argentina.getMonth() - 1, 1), next = new Date(argentina.getFullYear(), argentina.getMonth(), 1);
+  const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}-01`;
+  const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(month);
+  useEffect(() => {
+    if (argentina.getDate() > 5) return;
+    supabase.from("monthly_archives").select("id").eq("period_month", monthKey).maybeSingle().then(({ data }) => setVisible(!data));
+  }, [monthKey]);
+  if (!visible) return null;
+  const cell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const section = (title: string, headers: string[], rows: unknown[][]) => [title, headers.map(cell).join(","), ...rows.map((row) => row.map(cell).join(",")), ""].join("\r\n");
+  const inMonth = (value: string) => { const d = new Date(value.length === 10 ? `${value}T12:00:00-03:00` : value); return d >= month && d < next; };
+  const downloadAndDelete = async () => {
+    setWorking(true);
+    const oldSales = sales.filter((x) => inMonth(x.sold_at)), oldExpenses = expenses.filter((x) => inMonth(x.expense_date)), oldPayments = payments.filter((x) => inMonth(x.payment_date));
+    const csv = "\ufeff" + [
+      section("VENTAS", ["Fecha", "Total", "Costo", "Ganancia", "Método", "Estado", "Notas"], oldSales.map((x) => [x.sold_at, x.total, x.total_cost, x.profit, x.payment_method, x.status, x.notes])),
+      section("GASTOS", ["Fecha", "Nombre", "Categoría", "Monto", "Descripción"], oldExpenses.map((x) => [x.expense_date, x.name, x.category, x.amount, x.description])),
+      section("PAGOS", ["Fecha", "Concepto", "Método", "Estado", "Monto", "Notas"], oldPayments.map((x) => [x.payment_date, x.concept, x.payment_method, x.status, x.amount, x.notes])),
+    ].join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })), link = document.createElement("a");
+    link.href = url; link.download = `respaldo-${monthKey.slice(0, 7)}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    const { error } = await supabase.rpc("export_and_delete_month", { p_month: monthKey });
+    if (error) { notify(`El respaldo se descargó, pero no se borraron los datos: ${error.message}`); setWorking(false); return; }
+    setVisible(false); await reload(); notify("Respaldo descargado y datos mensuales eliminados.");
+  };
+  return <section className="retention-alert" role="alert"><AlertTriangle /><div><strong>Descargá el respaldo de {monthLabel}</strong><p>Después de descargarlo, los datos de ese mes se eliminarán. Si no lo hacés, se borrarán automáticamente el día 5.</p></div><button onClick={downloadAndDelete} disabled={working}>{working ? <Loader2 className="spin" /> : <Download />}{working ? "Procesando..." : "Descargar respaldo"}</button></section>;
 }
 function Content({
   page,
