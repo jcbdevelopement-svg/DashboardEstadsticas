@@ -663,8 +663,8 @@ function ProductsPage({ items, open, reload, notify }: { items: Product[]; open:
       const isCollapsed = !q && collapsed.has(category);
       return <section className="panel table-panel product-category" key={category}>
         <button className="category-bar" onClick={() => toggle(category)} aria-expanded={!isCollapsed}><span><b>{category}</b><small>{products.length} {products.length === 1 ? "producto" : "productos"}</small></span><ChevronDown className={isCollapsed ? "" : "open"} /></button>
-        {!isCollapsed && <div className="table-wrap"><table><thead><tr><th>PRODUCTO</th><th>PRECIO</th><th>COSTO</th><th>GANANCIA/U.</th><th>MARGEN</th><th>ACCIONES</th></tr></thead><tbody>
-          {products.map((p) => <tr key={p.id}><td><b>{p.name}</b></td><td>{ars.format(p.sale_price)}</td><td>{ars.format(p.cost_price)}</td><td className="profit">{ars.format(p.sale_price - p.cost_price)}</td><td>{p.sale_price ? (((p.sale_price - p.cost_price) / p.sale_price) * 100).toFixed(1) : 0}%</td><td><button className="row-action" onClick={() => open(p)}>Editar</button><Delete table="products" id={p.id} reload={reload} notify={notify} /></td></tr>)}
+        {!isCollapsed && <div className="table-wrap"><table><thead><tr><th>PRODUCTO</th><th>PRECIO BASE</th><th>PRECIOS X CANTIDAD</th><th>COSTO</th><th>GANANCIA/U.</th><th>MARGEN</th><th>ACCIONES</th></tr></thead><tbody>
+          {products.map((p) => <tr key={p.id}><td><b>{p.name}</b></td><td>{ars.format(p.sale_price)}</td><td>{p.tier_prices?.length ? <div className="tier-chips">{p.tier_prices.map((tier, i) => <span key={i}>Desde {tier.minQty}: {ars.format(tier.unitPrice)}</span>)}</div> : <small>Precio único</small>}</td><td>{ars.format(p.cost_price)}</td><td className="profit">{ars.format(p.sale_price - p.cost_price)}</td><td>{p.sale_price ? (((p.sale_price - p.cost_price) / p.sale_price) * 100).toFixed(1) : 0}%</td><td><button className="row-action" onClick={() => open(p)}>Editar</button><Delete table="products" id={p.id} reload={reload} notify={notify} /></td></tr>)}
         </tbody></table></div>}
       </section>;
     }) : <section className="panel"><Empty text={q ? "No encontramos productos con esa búsqueda." : "Creá tu primer producto para comenzar."} /></section>}
@@ -899,6 +899,7 @@ function DataModal({
   close: () => void;
   done: (s: string) => void;
 }) {
+  const [tiers, setTiers] = useState<Array<{ minQty: number; maxQty?: number; unitPrice: number }>>(modal.item?.tier_prices || []);
   if (modal.kind === "sale")
     return <SaleModal products={products} item={modal.item} close={close} done={done} />;
   const item = modal.item || {},
@@ -914,6 +915,7 @@ function DataModal({
         category: f.get("category"),
         sale_price: +String(f.get("sale_price")),
         cost_price: +String(f.get("cost_price")),
+        tier_prices: tiers.filter((tier) => tier.minQty > 0 && tier.unitPrice >= 0),
       });
     else if (isExpense)
       Object.assign(payload, {
@@ -968,6 +970,7 @@ function DataModal({
                 value={item.cost_price ?? 0}
               />
             </div>
+            <div className="tier-editor"><div className="tier-editor-head"><span><b>Precios por cantidad</b><small>Opcional: reemplazan el precio normal según las unidades.</small></span><button type="button" onClick={() => setTiers([...tiers, { minQty: 1, unitPrice: Number(item.sale_price) || 0 }])}><Plus />Agregar</button></div>{tiers.map((tier, index) => <div className="tier-row" key={index}><label>Desde<input type="number" min="1" value={tier.minQty} onChange={(e) => setTiers(tiers.map((x, i) => i === index ? { ...x, minQty: +e.target.value } : x))} /></label><label>Hasta<input type="number" min={tier.minQty} placeholder="Sin límite" value={tier.maxQty ?? ""} onChange={(e) => setTiers(tiers.map((x, i) => i === index ? { ...x, maxQty: e.target.value ? +e.target.value : undefined } : x))} /></label><label>Precio c/u<input type="number" min="0" step="0.01" value={tier.unitPrice} onChange={(e) => setTiers(tiers.map((x, i) => i === index ? { ...x, unitPrice: +e.target.value } : x))} /></label><button type="button" className="tier-delete" onClick={() => setTiers(tiers.filter((_, i) => i !== index))}><Trash2 /></button></div>)}</div>
           </>
         ) : isExpense ? (
           <>
@@ -1075,9 +1078,10 @@ function SaleModal({
     [productCategory, setProductCategory] = useState("all");
   const categories = [...new Set(products.map((p) => p.category || "Sin categoría"))].sort((a, b) => a.localeCompare(b, "es"));
   const visibleProducts = products.filter((p) => (productCategory === "all" || p.category === productCategory) && (p.name + " " + p.category).toLowerCase().includes(productSearch.trim().toLowerCase()));
+  const priceFor = (product: Product | undefined, quantity: number) => product ? [...(product.tier_prices || [])].sort((a, b) => b.minQty - a.minQty).find((tier) => quantity >= tier.minQty && (!tier.maxQty || quantity <= tier.maxQty))?.unitPrice ?? product.sale_price : 0;
   const total = lines.reduce((a, l) => {
     const p = products.find((x) => x.id === l.product_id);
-    return a + (p?.sale_price || 0) * l.quantity;
+    return a + priceFor(p, l.quantity) * l.quantity;
   }, 0);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();

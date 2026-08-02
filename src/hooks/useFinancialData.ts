@@ -14,7 +14,7 @@ export function useFinancialData() {
     const [p, s, e, pa] = await Promise.all([
       supabase
         .from("products")
-        .select("id,user_id,name,category,sale_price,cost_price,created_at,updated_at")
+        .select("id,user_id,name,category,sale_price,cost_price,tier_prices,created_at,updated_at")
         .order("created_at", { ascending: false }),
       supabase
         .from("sales")
