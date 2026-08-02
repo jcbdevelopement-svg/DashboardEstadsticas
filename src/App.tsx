@@ -234,24 +234,41 @@ function MonthlyRetentionAlert({ sales, expenses, payments, reload, notify }: {
     supabase.from("monthly_archives").select("id").eq("period_month", monthKey).maybeSingle().then(({ data }) => setVisible(!data));
   }, [monthKey]);
   if (!visible) return null;
-  const cell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const section = (title: string, headers: string[], rows: unknown[][]) => [title, headers.map(cell).join(","), ...rows.map((row) => row.map(cell).join(",")), ""].join("\r\n");
   const inMonth = (value: string) => { const d = new Date(value.length === 10 ? `${value}T12:00:00-03:00` : value); return d >= month && d < next; };
   const downloadAndDelete = async () => {
     setWorking(true);
     const oldSales = sales.filter((x) => inMonth(x.sold_at)), oldExpenses = expenses.filter((x) => inMonth(x.expense_date)), oldPayments = payments.filter((x) => inMonth(x.payment_date));
-    const csv = "\ufeff" + [
-      section("VENTAS", ["Fecha", "Total", "Costo", "Ganancia", "Método", "Estado", "Notas"], oldSales.map((x) => [x.sold_at, x.total, x.total_cost, x.profit, x.payment_method, x.status, x.notes])),
-      section("GASTOS", ["Fecha", "Nombre", "Categoría", "Monto", "Descripción"], oldExpenses.map((x) => [x.expense_date, x.name, x.category, x.amount, x.description])),
-      section("PAGOS", ["Fecha", "Concepto", "Método", "Estado", "Monto", "Notas"], oldPayments.map((x) => [x.payment_date, x.concept, x.payment_method, x.status, x.amount, x.notes])),
-    ].join("\r\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })), link = document.createElement("a");
-    link.href = url; link.download = `respaldo-${monthKey.slice(0, 7)}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    try {
+      const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      doc.setProperties({ title: `Respaldo ${monthLabel}`, subject: "Respaldo financiero mensual", author: "JCB Developement" });
+      doc.setFillColor(116, 35, 204); doc.rect(0, 0, 210, 34, "F");
+      doc.setTextColor(255, 255, 255); doc.setFontSize(20); doc.text("Respaldo financiero", 14, 16);
+      doc.setFontSize(10); doc.text(monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1), 14, 24);
+      doc.setTextColor(35, 38, 46); doc.setFontSize(9);
+      const totalSales = oldSales.reduce((sum, x) => sum + Number(x.total), 0), totalExpenses = oldExpenses.reduce((sum, x) => sum + Number(x.amount), 0);
+      doc.text(`Ventas: ${ars.format(totalSales)}   |   Gastos: ${ars.format(totalExpenses)}   |   Resultado: ${ars.format(totalSales - totalExpenses)}`, 14, 43);
+      let cursor = 52;
+      const addTable = (title: string, headers: string[], rows: string[][]) => {
+        if (cursor > 245) { doc.addPage(); cursor = 18; }
+        doc.setFontSize(12); doc.setTextColor(116, 35, 204); doc.text(`${title} (${rows.length})`, 14, cursor);
+        autoTable(doc, { startY: cursor + 4, head: [headers], body: rows.length ? rows : [["Sin registros", ...headers.slice(1).map(() => "")]], theme: "grid", styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" }, headStyles: { fillColor: [116, 35, 204], textColor: 255 }, alternateRowStyles: { fillColor: [248, 245, 252] }, margin: { left: 14, right: 14 } });
+        cursor = (doc as any).lastAutoTable.finalY + 12;
+      };
+      addTable("Ventas", ["Fecha", "Total", "Costo", "Ganancia", "Método", "Estado"], oldSales.map((x) => [date(x.sold_at), ars.format(Number(x.total)), ars.format(Number(x.total_cost)), ars.format(Number(x.profit)), x.payment_method, x.status]));
+      addTable("Gastos", ["Fecha", "Nombre", "Categoría", "Monto"], oldExpenses.map((x) => [date(x.expense_date), x.name, x.category, ars.format(Number(x.amount))]));
+      addTable("Pagos", ["Fecha", "Concepto", "Método", "Estado", "Monto"], oldPayments.map((x) => [date(x.payment_date), x.concept, x.payment_method, x.status, ars.format(Number(x.amount))]));
+      const pages = doc.getNumberOfPages();
+      for (let page = 1; page <= pages; page++) { doc.setPage(page); doc.setFontSize(7); doc.setTextColor(130); doc.text(`JCB Developement - Página ${page} de ${pages}`, 105, 291, { align: "center" }); }
+      doc.save(`respaldo-${monthKey.slice(0, 7)}.pdf`);
+    } catch (error) {
+      notify(`No se pudo crear el PDF: ${error instanceof Error ? error.message : "error desconocido"}`); setWorking(false); return;
+    }
     const { error } = await supabase.rpc("export_and_delete_month", { p_month: monthKey });
     if (error) { notify(`El respaldo se descargó, pero no se borraron los datos: ${error.message}`); setWorking(false); return; }
     setVisible(false); await reload(); notify("Respaldo descargado y datos mensuales eliminados.");
   };
-  return <section className="retention-alert" role="alert"><AlertTriangle /><div><strong>Descargá el respaldo de {monthLabel}</strong><p>Después de descargarlo, los datos de ese mes se eliminarán. Si no lo hacés, se borrarán automáticamente el día 5.</p></div><button onClick={downloadAndDelete} disabled={working}>{working ? <Loader2 className="spin" /> : <Download />}{working ? "Procesando..." : "Descargar respaldo"}</button></section>;
+  return <section className="retention-alert" role="alert"><AlertTriangle /><div><strong>Descargá el respaldo de {monthLabel}</strong><p>Se descargará un PDF. Después, los datos de ese mes se eliminarán. Si no lo hacés, se borrarán automáticamente el día 5.</p></div><button onClick={downloadAndDelete} disabled={working}>{working ? <Loader2 className="spin" /> : <Download />}{working ? "Procesando..." : "Descargar PDF"}</button></section>;
 }
 function Content({
   page,
