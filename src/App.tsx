@@ -50,7 +50,8 @@ type Page =
   | "Gastos"
   | "Pagos"
   | "Estadísticas"
-  | "Reportes";
+  | "Reportes"
+  | "Configuración";
 type Modal = {
   kind: "sale" | "product" | "expense" | "payment";
   item?: any;
@@ -65,11 +66,10 @@ const nav = [
   ["Estadísticas", BarChart3],
   ["Reportes", FileBarChart],
 ] as const;
-const ars = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "ARS",
-  maximumFractionDigits: 0,
-});
+const ars = { format(value: number) {
+  const currency = localStorage.getItem("jcb-currency") || "ARS";
+  return new Intl.NumberFormat(currency === "USD" ? "es-US" : "es-AR", { style: "currency", currency, maximumFractionDigits: currency === "USD" ? 2 : 0 }).format(value);
+} };
 const date = (v: string) =>
   new Intl.DateTimeFormat("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
@@ -91,6 +91,10 @@ export default function App() {
     [period, setPeriod] = useState<Period>("30"),
     [toast, setToast] = useState("");
   const data = useFinancialData();
+  useEffect(() => {
+    const color = localStorage.getItem("jcb-brand-color") || "#8b2cf5";
+    document.documentElement.style.setProperty("--brand", color);
+  }, []);
   useEffect(() => {
     supabase.auth.getSession().then((x) => setSession(x.data.session));
     const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
@@ -127,7 +131,7 @@ export default function App() {
           ))}
         </nav>
         <div className="aside-bottom">
-          <button>
+          <button className={page === "Configuración" ? "active" : ""} onClick={() => { setPage("Configuración"); setMenu(false); }}>
             <Settings />
             Configuración
           </button>
@@ -194,6 +198,7 @@ export default function App() {
             period={period}
             modal={setModal}
             notify={notify}
+            session={session}
           />
         )}
       </main>
@@ -276,12 +281,14 @@ function Content({
   period,
   modal,
   notify,
+  session,
 }: {
   page: Page;
   data: ReturnType<typeof useFinancialData>;
   period: Period;
   modal: (m: Modal) => void;
   notify: (m: string) => void;
+  session: Session;
 }) {
   const start = since(period),
     sales = data.sales.filter((x) => !start || new Date(x.sold_at) >= start),
@@ -321,7 +328,60 @@ function Content({
     );
   if (page === "Estadísticas")
     return <Stats sales={sales} expenses={expenses} products={data.products} />;
+  if (page === "Configuración")
+    return <SettingsPage session={session} notify={notify} />;
   return <Reports sales={sales} expenses={expenses} notify={notify} />;
+}
+
+const themeColors = ["#8b2cf5", "#2563eb", "#059669", "#dc2626", "#ea580c", "#db2777", "#111827"];
+const expenseCategoryLabels = ["📢 Publicidad y Marketing", "🖥️ Hosting", "🌐 Dominios", "🧩 Software y Herramientas", "📦 Productos / Mercadería", "🚚 Envíos y Logística", "🏭 Proveedores", "💳 Comisiones de Pago", "🛍️ Comisiones de Marketplace", "💼 Servicios Profesionales", "👥 Sueldos y Personal", "🏢 Alquiler", "💡 Servicios e Infraestructura", "📞 Telefonía e Internet", "🎨 Diseño y Contenido", "📸 Fotografía / Video", "🔄 Devoluciones y Reembolsos", "🧾 Impuestos", "🏦 Gastos Bancarios", "💸 Otros"];
+
+function SettingsPage({ session, notify }: { session: Session; notify: (message: string) => void }) {
+  const [name, setName] = useState(session.user.user_metadata.name || "JCB Developement");
+  const [password, setPassword] = useState("");
+  const [color, setColor] = useState(localStorage.getItem("jcb-brand-color") || "#8b2cf5");
+  const [currency, setCurrency] = useState(localStorage.getItem("jcb-currency") || "ARS");
+  const [saving, setSaving] = useState(false);
+  const changeColor = (next: string) => {
+    setColor(next); localStorage.setItem("jcb-brand-color", next);
+    document.documentElement.style.setProperty("--brand", next);
+  };
+  const saveAccount = async (event: FormEvent) => {
+    event.preventDefault();
+    if (password && password.length < 6) { notify("La contraseña debe tener al menos 6 caracteres."); return; }
+    setSaving(true);
+    const changes: { data: { name: string }; password?: string } = { data: { name: name.trim() || "JCB Developement" } };
+    if (password) changes.password = password;
+    const { error } = await supabase.auth.updateUser(changes);
+    setSaving(false);
+    if (error) { notify(error.message); return; }
+    setPassword(""); notify("Configuración guardada.");
+  };
+  return <div className="settings-grid">
+    <form className="panel settings-card" onSubmit={saveAccount}>
+      <div className="panel-head"><div><h2>Cuenta y negocio</h2><p>Información principal de tu perfil.</p></div></div>
+      <label>Nombre del negocio<input value={name} onChange={(e) => setName(e.target.value)} /></label>
+      <label>Email<input value={session.user.email || ""} disabled /></label>
+      <label>Nueva contraseña<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Dejá vacío para no cambiarla" minLength={6} /></label>
+      <label>Moneda del dashboard<select value={currency} onChange={(e) => { setCurrency(e.target.value); localStorage.setItem("jcb-currency", e.target.value); }}><option value="ARS">Pesos argentinos (ARS)</option><option value="USD">Dólares (USD)</option></select></label>
+      <button className="primary settings-save" disabled={saving}>{saving ? <Loader2 className="spin" /> : <Check />}{saving ? "Guardando..." : "Guardar cambios"}</button>
+    </form>
+    <section className="panel settings-card">
+      <div className="panel-head"><div><h2>Colores de la página</h2><p>Elegí el color principal del dashboard.</p></div></div>
+      <div className="color-picker">{themeColors.map((item) => <button key={item} aria-label={`Usar color ${item}`} className={color === item ? "selected" : ""} style={{ background: item }} onClick={() => changeColor(item)}>{color === item && <Check />}</button>)}</div>
+      <label>Color personalizado<div className="custom-color"><input type="color" value={color} onChange={(e) => changeColor(e.target.value)} /><span>{color.toUpperCase()}</span></div></label>
+    </section>
+    <section className="panel settings-card">
+      <div className="panel-head"><div><h2>Respaldos automáticos</h2><p>Protección mensual de tus datos.</p></div></div>
+      <div className="setting-info"><b>Días 1 al 5</b><span>Aparece el aviso para descargar el PDF del mes anterior.</span></div>
+      <div className="setting-info"><b>Día 5, 03:00</b><span>Si no se descargó, ventas, gastos y pagos del mes vencido se eliminan automáticamente.</span></div>
+      <div className="setting-info"><b>Siempre conservados</b><span>Productos y cuenta de usuario.</span></div>
+    </section>
+    <section className="panel settings-card categories-card">
+      <div className="panel-head"><div><h2>Categorías de gastos</h2><p>Categorías disponibles al registrar gastos.</p></div></div>
+      <div className="settings-categories">{expenseCategoryLabels.map((item) => <span key={item}>{item}</span>)}</div>
+    </section>
+  </div>;
 }
 function PeriodSelect({
   value,
