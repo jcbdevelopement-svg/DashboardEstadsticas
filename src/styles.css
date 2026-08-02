@@ -5,6 +5,7 @@
 @media(max-width:440px){.metric-grid,.metric-grid.four,.insight-grid,.report-grid{grid-template-columns:1fr}.chart-summary{display:grid;grid-template-columns:1fr 1fr}.segmented{display:none}.metric strong{font-size:22px}}
 
 /* JCB Developement brand system */
+:root{zoom:.9}
 :root{--brand:#8b2cf5;--brand-dark:#6120aa;--brand-soft:#f3eaff;background:#f5f6f8}
 aside{background:linear-gradient(180deg,#fff 0%,#f6f6f8 100%);border-right-color:#dedfe4;padding-top:18px}
 .logo{height:62px;padding:0 4px;display:flex;align-items:center}
@@ -18,4 +19,4 @@ nav button.active{background:var(--brand-soft);color:#7423cc;box-shadow:inset 3p
 .user>div{border-radius:9px;background:#e7e7ec;overflow:hidden}
 .user>div img{width:42px;height:42px;object-fit:contain}
 .user b{color:#3d3546}
-@media(max-width:760px){.logo img{width:170px}.logo>button{display:block}}
+@media(max-width:760px){:root{zoom:1}.logo img{width:170px}.logo>button{display:block}}
