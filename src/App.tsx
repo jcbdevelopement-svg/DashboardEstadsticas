@@ -313,7 +313,7 @@ function Content({
   if (page === "Dashboard")
     return <Dashboard sales={sales} expenses={expenses} />;
   if (page === "Ventas")
-    return <SalesPage sales={sales} open={(sale) => modal({ kind: "sale", item: sale })} />;
+    return <SalesPage sales={sales} open={(sale) => modal({ kind: "sale", item: sale })} reload={data.reload} notify={notify} />;
   if (page === "Productos")
     return (
       <ProductsPage
@@ -580,7 +580,7 @@ function GroupSummary({ count, groups, collapsed, setCollapsed, label }: { count
 function CollapsibleGroup({ title, count, noun, collapsed, toggle, children }: { title: string; count: number; noun: string; collapsed: boolean; toggle: () => void; children: any }) {
   return <section className="panel table-panel product-category"><button className="category-bar" onClick={toggle} aria-expanded={!collapsed}><span><b>{title}</b><small>{count} {count === 1 ? noun.replace(/s$/, "") : noun}</small></span><ChevronDown className={collapsed ? "" : "open"} /></button>{!collapsed && children}</section>;
 }
-function SalesPage({ sales, open }: { sales: Sale[]; open: (sale?: Sale) => void }) {
+function SalesPage({ sales, open, reload, notify }: { sales: Sale[]; open: (sale?: Sale) => void; reload: () => Promise<void>; notify: (message: string) => void }) {
   const [q, setQ] = useState(""), [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const list = sales.filter((s) =>
     (s.payment_method + s.status + (s.notes || "") + (s.sale_items?.map((i) => i.products?.name).join(" ") || "")).toLowerCase().includes(q.toLowerCase()),
@@ -591,11 +591,11 @@ function SalesPage({ sales, open }: { sales: Sale[]; open: (sale?: Sale) => void
     <>
       <Toolbar q={q} setQ={setQ} button="Nueva venta" action={() => open()} />
       <GroupSummary count={list.length} groups={groups.map(([key]) => key)} collapsed={collapsed} setCollapsed={setCollapsed} label="ventas" />
-      {list.length ? groups.map(([key, group]) => <CollapsibleGroup key={key} title={key} count={group.length} noun="ventas" collapsed={!q && collapsed.has(key)} toggle={() => toggle(key)}><SalesRows sales={group} open={open} /></CollapsibleGroup>) : <section className="panel"><Empty text="No hay ventas para mostrar." /></section>}
+      {list.length ? groups.map(([key, group]) => <CollapsibleGroup key={key} title={key} count={group.length} noun="ventas" collapsed={!q && collapsed.has(key)} toggle={() => toggle(key)}><SalesRows sales={group} open={open} reload={reload} notify={notify} /></CollapsibleGroup>) : <section className="panel"><Empty text="No hay ventas para mostrar." /></section>}
     </>
   );
 }
-function SalesRows({ sales, open }: { sales: Sale[]; open?: (sale: Sale) => void }) { return <div className="table-wrap"><table><thead><tr><th>FECHA</th><th>PRODUCTOS</th><th>TOTAL</th><th>COSTO</th><th>GANANCIA</th><th>MÉTODO</th><th>ESTADO</th>{open && <th>ACCIONES</th>}</tr></thead><tbody>{sales.map((s) => <tr key={s.id}><td>{date(s.sold_at)}</td><td><b>{s.sale_items?.map((i) => i.products?.name).join(", ") || "Venta"}</b></td><td>{ars.format(s.total)}</td><td>{ars.format(s.total_cost)}</td><td className="profit">{ars.format(s.profit)}</td><td>{s.payment_method}</td><td><Status value={s.status} /></td>{open && <td><button className="row-action" onClick={() => open(s)}>Editar</button></td>}</tr>)}</tbody></table></div>; }
+function SalesRows({ sales, open, reload, notify }: { sales: Sale[]; open?: (sale: Sale) => void; reload?: () => Promise<void>; notify?: (message: string) => void }) { return <div className="table-wrap"><table><thead><tr><th>FECHA</th><th>PRODUCTOS</th><th>TOTAL</th><th>COSTO</th><th>GANANCIA</th><th>MÉTODO</th><th>ESTADO</th>{open && <th>ACCIONES</th>}</tr></thead><tbody>{sales.map((s) => <tr key={s.id}><td>{date(s.sold_at)}</td><td><b>{s.sale_items?.map((i) => i.products?.name).join(", ") || "Venta"}</b></td><td>{ars.format(s.total)}</td><td>{ars.format(s.total_cost)}</td><td className="profit">{ars.format(s.profit)}</td><td>{s.payment_method}</td><td><Status value={s.status} /></td>{open && reload && notify && <td><button className="row-action" onClick={() => open(s)}>Editar</button><Delete table="sales" id={s.id} reload={reload} notify={notify} /></td>}</tr>)}</tbody></table></div>; }
 function SalesTable({ sales, title }: { sales: Sale[]; title: string }) {
   return (
     <section className="panel table-panel">
