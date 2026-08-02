@@ -1,23 +1,1337 @@
-import {FormEvent,useEffect,useMemo,useState}from'react';import type{Session}from'@supabase/supabase-js';import{Area,AreaChart,Bar,BarChart,CartesianGrid,Cell,Pie,PieChart,ResponsiveContainer,Tooltip,XAxis,YAxis}from'recharts';import{ArrowDownRight,ArrowUpRight,BarChart3,Boxes,CalendarDays,Check,ChevronDown,CircleDollarSign,Download,FileBarChart,LayoutDashboard,Loader2,Menu,Plus,Receipt,Search,Settings,ShoppingBag,Trash2,UserRound,WalletCards,X}from'lucide-react';import{supabase}from'./lib/supabase';import{Auth}from'./components/Auth';import{useFinancialData}from'./hooks/useFinancialData';import type{Expense,Payment,Product,Sale}from'./lib/types';
-type Page='Dashboard'|'Ventas'|'Productos'|'Gastos'|'Pagos'|'Estadísticas'|'Reportes';type Modal={kind:'sale'|'product'|'expense'|'payment';item?:any}|null;type Period='today'|'7'|'30'|'month'|'year'|'all';
-const nav=[['Dashboard',LayoutDashboard],['Ventas',ShoppingBag],['Productos',Boxes],['Gastos',Receipt],['Pagos',WalletCards],['Estadísticas',BarChart3],['Reportes',FileBarChart]] as const;const ars=new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0});const date=(v:string)=>new Intl.DateTimeFormat('es-AR',{timeZone:'America/Argentina/Buenos_Aires'}).format(new Date(v.length===10?v+'T12:00:00-03:00':v));
-function since(p:Period){const n=new Date(),d=new Date(n);if(p==='today')d.setHours(0,0,0,0);if(p==='7')d.setDate(n.getDate()-6);if(p==='30')d.setDate(n.getDate()-29);if(p==='month')d.setDate(1);if(p==='year')d.setMonth(0,1);return p==='all'?null:d}
-export default function App(){const[session,setSession]=useState<Session|null|undefined>(),[page,setPage]=useState<Page>('Dashboard'),[menu,setMenu]=useState(false),[modal,setModal]=useState<Modal>(null),[period,setPeriod]=useState<Period>('month'),[toast,setToast]=useState('');const data=useFinancialData();useEffect(()=>{supabase.auth.getSession().then(x=>setSession(x.data.session));const{data}=supabase.auth.onAuthStateChange((_e,s)=>setSession(s));return()=>data.subscription.unsubscribe()},[]);if(session===undefined)return <div className="auth-page"/>;if(!session)return <Auth/>;const notify=(m:string)=>{setToast(m);setTimeout(()=>setToast(''),2500)};return <div className="shell"><aside className={menu?'open':''}><div className="logo"><img src="/brand/jcb-wordmark.png"/><button onClick={()=>setMenu(false)}><X/></button></div><div className="nav-label">GESTIÓN</div><nav>{nav.map(([n,I])=><button className={page===n?'active':''} onClick={()=>{setPage(n);setMenu(false)}}><I/>{n}</button>)}</nav><div className="aside-bottom"><button><Settings/>Configuración</button><button onClick={()=>supabase.auth.signOut()}><UserRound/>Cerrar sesión</button><div className="user"><div><img src="/brand/jb-mark.png"/></div><span><b>{session.user.user_metadata.name||'JCB Developement'}</b><small>{session.user.email}</small></span></div></div></aside><main><header><button className="hamb" onClick={()=>setMenu(true)}><Menu/></button><div><h1>{page}</h1><p>{page==='Dashboard'?'Todo lo importante de tu negocio, en un solo lugar.':'Datos reales, seguros y actualizados.'}</p></div><div className="header-actions"><span className="sync live"><i/>Supabase</span><PeriodSelect value={period} set={setPeriod}/>{(page==='Dashboard'||page==='Ventas')&&<button className="primary" onClick={()=>setModal({kind:'sale'})}><Plus/>Agregar venta</button>}</div></header>{data.error&&<div className="error-state">{data.error}<button onClick={data.reload}>Reintentar</button></div>}{data.loading?<Loading/>:<Content page={page} data={data} period={period} modal={setModal} notify={notify}/>}</main>{modal&&<DataModal modal={modal} products={data.products} userId={session.user.id} close={()=>setModal(null)} done={async m=>{setModal(null);await data.reload();notify(m)}}/>}{toast&&<div className="toast"><Check/>{toast}</div>}</div>}
-function Content({page,data,period,modal,notify}:{page:Page;data:ReturnType<typeof useFinancialData>;period:Period;modal:(m:Modal)=>void;notify:(m:string)=>void}){const start=since(period),sales=data.sales.filter(x=>!start||new Date(x.sold_at)>=start),expenses=data.expenses.filter(x=>!start||new Date(x.expense_date+'T12:00:00-03:00')>=start);if(page==='Dashboard')return <Dashboard sales={sales} expenses={expenses}/>;if(page==='Ventas')return <SalesPage sales={sales} open={()=>modal({kind:'sale'})}/>;if(page==='Productos')return <ProductsPage items={data.products} open={x=>modal({kind:'product',item:x})} reload={data.reload} notify={notify}/>;if(page==='Gastos')return <ExpensesPage items={data.expenses} open={x=>modal({kind:'expense',item:x})} reload={data.reload} notify={notify}/>;if(page==='Pagos')return <PaymentsPage items={data.payments} open={x=>modal({kind:'payment',item:x})} reload={data.reload} notify={notify}/>;if(page==='Estadísticas')return <Stats sales={sales} expenses={expenses} products={data.products}/>;return <Reports sales={sales} expenses={expenses} notify={notify}/>}
-function PeriodSelect({value,set}:{value:Period;set:(p:Period)=>void}){return <label className="period"><CalendarDays/><select value={value} onChange={e=>set(e.target.value as Period)}><option value="today">Hoy</option><option value="7">Últimos 7 días</option><option value="30">Últimos 30 días</option><option value="month">Este mes</option><option value="year">Este año</option><option value="all">Todo</option></select><ChevronDown/></label>}
-function totals(sales:Sale[],expenses:Expense[]){const valid=sales.filter(s=>s.status==='completed'),revenue=valid.reduce((a,s)=>a+Number(s.total),0),cost=valid.reduce((a,s)=>a+Number(s.total_cost),0),expense=expenses.reduce((a,e)=>a+Number(e.amount),0),gross=revenue-cost,net=gross-expense;return{revenue,cost,expense,gross,net,margin:revenue?net/revenue*100:0,count:valid.length}}
-function Dashboard({sales,expenses}:{sales:Sale[];expenses:Expense[]}){const t=totals(sales,expenses),chart=groupSales(sales);return <><section className="metric-grid"><Metric title="Ventas" value={ars.format(t.revenue)}/><Metric title="Ganancia neta" value={ars.format(t.net)}/><Metric title="Costos" value={ars.format(t.cost)}/><Metric title="Gastos" value={ars.format(t.expense)}/><Metric title="Margen" value={t.margin.toFixed(1)+'%'}/></section><section className="panel chart-panel"><div className="panel-head"><div><h2>Rendimiento financiero</h2><p>{t.count} ventas completadas</p></div></div>{chart.length?<><div className="chart-legends"><span><i className="purple"/>Ventas</span><span><i className="amber"/>Costos</span><span><i className="green"/>Ganancia</span></div><ResponsiveContainer width="100%" height={280}><AreaChart data={chart}><CartesianGrid vertical={false} stroke="#edf0f3"/><XAxis dataKey="day"/><YAxis/><Tooltip formatter={(v)=>ars.format(Number(v))}/><Area dataKey="sales" stroke="#8b2cf5" fill="#8b2cf522"/><Area dataKey="cost" stroke="#aeb2bb" fill="transparent"/><Area dataKey="profit" stroke="#6120aa" fill="transparent"/></AreaChart></ResponsiveContainer></>:<Empty text="Todavía no registraste ventas."/>}<div className="chart-summary"><span>Ventas totales<b>{ars.format(t.revenue)}</b></span><span>Ganancia bruta<b>{ars.format(t.gross)}</b></span><span>Ganancia neta<b>{ars.format(t.net)}</b></span></div></section><SalesTable sales={sales.slice(0,5)} title="Últimas ventas"/></>}
-function Metric({title,value}:{title:string;value:string}){return <article className="metric"><div className="metric-top"><span>{title}</span><CircleDollarSign/></div><strong>{value}</strong><div className="change good"><ArrowUpRight/><span>Datos del período</span></div></article>}
-function groupSales(sales:Sale[]){const m=new Map<string,{day:string;sales:number;cost:number;profit:number}>();sales.filter(x=>x.status==='completed').forEach(s=>{const k=s.sold_at.slice(0,10),v=m.get(k)||{day:date(k),sales:0,cost:0,profit:0};v.sales+=+s.total;v.cost+=+s.total_cost;v.profit+=+s.profit;m.set(k,v)});return[...m.values()].slice(-31)}
-function SalesPage({sales,open}:{sales:Sale[];open:()=>void}){const[q,setQ]=useState('');const list=sales.filter(s=>(s.payment_method+s.status).toLowerCase().includes(q.toLowerCase()));return <><Toolbar q={q} setQ={setQ} button="Nueva venta" action={open}/><SalesTable sales={list} title="Todas las ventas"/></>}
-function SalesTable({sales,title}:{sales:Sale[];title:string}){return <section className="panel table-panel"><div className="panel-head"><div><h2>{title}</h2><p>{sales.length} registros</p></div></div>{sales.length?<div className="table-wrap"><table><thead><tr><th>FECHA</th><th>PRODUCTOS</th><th>TOTAL</th><th>COSTO</th><th>GANANCIA</th><th>MÉTODO</th><th>ESTADO</th></tr></thead><tbody>{sales.map(s=><tr><td>{date(s.sold_at)}</td><td><b>{s.sale_items?.map(i=>i.products?.name).join(', ')||'Venta'}</b></td><td>{ars.format(s.total)}</td><td>{ars.format(s.total_cost)}</td><td className="profit">{ars.format(s.profit)}</td><td>{s.payment_method}</td><td><Status value={s.status}/></td></tr>)}</tbody></table></div>:<Empty text="No hay ventas para mostrar."/>}</section>}
-function ProductsPage({items,open,reload,notify}:{items:Product[];open:(x?:Product)=>void;reload:()=>Promise<void>;notify:(s:string)=>void}){const[q,setQ]=useState('');const list=items.filter(x=>(x.name+x.category).toLowerCase().includes(q.toLowerCase()));return <><Toolbar q={q} setQ={setQ} button="Agregar producto" action={()=>open()}/><section className="panel table-panel"><div className="panel-head"><div><h2>Productos</h2><p>{list.length} registros</p></div></div>{list.length?<div className="table-wrap"><table><thead><tr><th>PRODUCTO</th><th>CATEGORÍA</th><th>PRECIO</th><th>COSTO</th><th>GANANCIA/U.</th><th>MARGEN</th><th>ACCIONES</th></tr></thead><tbody>{list.map(p=><tr><td><b>{p.name}</b></td><td>{p.category}</td><td>{ars.format(p.sale_price)}</td><td>{ars.format(p.cost_price)}</td><td className="profit">{ars.format(p.sale_price-p.cost_price)}</td><td>{p.sale_price?((p.sale_price-p.cost_price)/p.sale_price*100).toFixed(1):0}%</td><td><button className="row-action" onClick={()=>open(p)}>Editar</button><Delete table="products" id={p.id} reload={reload} notify={notify}/></td></tr>)}</tbody></table></div>:<Empty text="Creá tu primer producto para comenzar."/>}</section></>}
-function ExpensesPage({items,open,reload,notify}:{items:Expense[];open:(x?:Expense)=>void;reload:()=>Promise<void>;notify:(s:string)=>void}){const[q,setQ]=useState('');const list=items.filter(x=>(x.name+x.category).toLowerCase().includes(q.toLowerCase())),sum=list.reduce((a,x)=>a+Number(x.amount),0);return <><Toolbar q={q} setQ={setQ} button="Registrar gasto" action={()=>open()}/><section className="metric-grid four"><Metric title="Total gastos" value={ars.format(sum)}/><Metric title="Hoy" value={ars.format(daySum(items,0))}/><Metric title="Últimos 7 días" value={ars.format(daySum(items,6))}/><Metric title="Últimos 30 días" value={ars.format(daySum(items,29))}/></section><SimpleTable heads={['GASTO','CATEGORÍA','FECHA','MONTO','ACCIONES']} empty="No hay gastos registrados.">{list.map(e=><tr><td><b>{e.name}</b></td><td>{e.category}</td><td>{date(e.expense_date)}</td><td>{ars.format(e.amount)}</td><td><button className="row-action" onClick={()=>open(e)}>Editar</button><Delete table="expenses" id={e.id} reload={reload} notify={notify}/></td></tr>)}</SimpleTable></>}
-function PaymentsPage({items,open,reload,notify}:{items:Payment[];open:(x?:Payment)=>void;reload:()=>Promise<void>;notify:(s:string)=>void}){const[q,setQ]=useState('');const list=items.filter(x=>(x.concept+x.payment_method+x.status).toLowerCase().includes(q.toLowerCase()));return <><Toolbar q={q} setQ={setQ} button="Registrar pago" action={()=>open()}/><SimpleTable heads={['CONCEPTO','MÉTODO','FECHA','MONTO','ESTADO','ACCIONES']} empty="No hay pagos registrados.">{list.map(p=><tr><td><b>{p.concept}</b></td><td>{p.payment_method}</td><td>{date(p.payment_date)}</td><td>{ars.format(p.amount)}</td><td><Status value={p.status}/></td><td><button className="row-action" onClick={()=>open(p)}>Editar</button><Delete table="payments" id={p.id} reload={reload} notify={notify}/></td></tr>)}</SimpleTable></>}
-function Stats({sales,expenses,products}:{sales:Sale[];expenses:Expense[];products:Product[]}){const t=totals(sales,expenses),chart=groupSales(sales),rank=new Map<string,{name:string;units:number;revenue:number;profit:number}>();sales.forEach(s=>s.sale_items?.forEach(i=>{const n=i.products?.name||'Producto',v=rank.get(i.product_id)||{name:n,units:0,revenue:0,profit:0};v.units+=i.quantity;v.revenue+=+i.subtotal;v.profit+=+i.profit;rank.set(i.product_id,v)}));return <><section className="metric-grid four"><Metric title="Ventas" value={ars.format(t.revenue)}/><Metric title="Ganancia neta" value={ars.format(t.net)}/><Metric title="Costos" value={ars.format(t.cost)}/><Metric title="Margen" value={t.margin.toFixed(1)+'%'}/></section><section className="two-cols"><section className="panel"><div className="panel-head"><div><h2>Evolución real</h2><p>Según el período seleccionado</p></div></div>{chart.length?<ResponsiveContainer width="100%" height={300}><BarChart data={chart}><CartesianGrid vertical={false}/><XAxis dataKey="day"/><YAxis/><Tooltip/><Bar dataKey="sales" fill="#8b2cf5"/><Bar dataKey="profit" fill="#b997df"/></BarChart></ResponsiveContainer>:<Empty text="No hay datos suficientes."/>}</section><section className="panel"><div className="panel-head"><div><h2>Productos destacados</h2><p>Por unidades vendidas</p></div></div>{[...rank.values()].sort((a,b)=>b.units-a.units).slice(0,5).map(x=><div className="ranking"><span><b>{x.name}</b><small>{x.units} unidades</small></span><strong>{ars.format(x.revenue)}</strong></div>)}{!rank.size&&<Empty text="Sin ventas de productos."/>}</section></section></>}
-function Reports({sales,expenses,notify}:{sales:Sale[];expenses:Expense[];notify:(s:string)=>void}){const t=totals(sales,expenses),rows=[['Ventas',t.revenue],['Costos',t.cost],['Gastos',t.expense],['Ganancia bruta',t.gross],['Ganancia neta',t.net],['Margen',t.margin]];function exportFile(kind:'csv'|'xls'){const sep=kind==='csv'?',':'\t',blob=new Blob([rows.map(r=>r.join(sep)).join('\n')],{type:'text/plain'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='reporte-financiero.'+kind;a.click();URL.revokeObjectURL(a.href);notify('Reporte exportado')}return <><section className="report-hero panel"><div><span>REPORTE FINANCIERO</span><h2>Resumen del período</h2><p>Información obtenida directamente de Supabase.</p></div><div className="export"><button onClick={()=>exportFile('csv')}><Download/>CSV</button><button onClick={()=>exportFile('xls')}><Download/>Excel</button><button className="primary" onClick={()=>window.print()}><Download/>PDF</button></div></section><section className="report-grid">{rows.map(([n,v])=><article><span>{n}</span><b>{n==='Margen'?Number(v).toFixed(1)+'%':ars.format(Number(v))}</b></article>)}</section></>}
-function DataModal({modal,products,userId,close,done}:{modal:Exclude<Modal,null>;products:Product[];userId:string;close:()=>void;done:(s:string)=>void}){if(modal.kind==='sale')return <SaleModal products={products} close={close} done={done}/>;const item=modal.item||{},isProduct=modal.kind==='product',isExpense=modal.kind==='expense';async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget),payload:any={user_id:userId};if(isProduct)Object.assign(payload,{name:f.get('name'),category:f.get('category'),sale_price:+String(f.get('sale_price')),cost_price:+String(f.get('cost_price'))});else if(isExpense)Object.assign(payload,{name:f.get('name'),category:f.get('category'),amount:+String(f.get('amount')),description:f.get('description'),expense_date:f.get('date')});else Object.assign(payload,{concept:f.get('concept'),amount:+String(f.get('amount')),payment_method:f.get('method'),status:f.get('status'),payment_date:f.get('date'),notes:f.get('notes')});const table=isProduct?'products':isExpense?'expenses':'payments',q=item.id?supabase.from(table).update(payload).eq('id',item.id):supabase.from(table).insert(payload),{error}=await q;if(error)alert(error.message);else done(item.id?'Registro actualizado':'Registro creado')}return <div className="backdrop"><form className="modal" onSubmit={submit}><ModalHead title={(item.id?'Editar ':'Nuevo ')+(isProduct?'producto':isExpense?'gasto':'pago')} close={close}/>{isProduct?<><Field name="name" label="Nombre" value={item.name}/><div className="form-grid"><Field name="category" label="Categoría" value={item.category}/><Field name="sale_price" label="Precio de venta" type="number" value={item.sale_price??0}/><Field name="cost_price" label="Costo" type="number" value={item.cost_price??0}/></div></>:isExpense?<><Field name="name" label="Nombre" value={item.name}/><div className="form-grid"><Select name="category" label="Categoría" options={['Publicidad','Hosting','Dominios','Herramientas','Proveedores','Comisiones','Servicios','Otros']} value={item.category}/><Field name="amount" label="Monto" type="number" value={item.amount??0}/><Field name="date" label="Fecha" type="date" value={item.expense_date||today()}/></div><Field name="description" label="Descripción" value={item.description}/></>:<><Field name="concept" label="Concepto" value={item.concept}/><div className="form-grid"><Field name="amount" label="Monto" type="number" value={item.amount??0}/><Select name="method" label="Método" options={methods} value={item.payment_method}/><Select name="status" label="Estado" options={['paid','pending','cancelled']} value={item.status}/><Field name="date" label="Fecha" type="date" value={item.payment_date||today()}/></div><Field name="notes" label="Notas" value={item.notes}/></>}<Actions close={close}/></form></div>}
-function SaleModal({products,close,done}:{products:Product[];close:()=>void;done:(s:string)=>void}){const[lines,setLines]=useState([{product_id:products[0]?.id||'',quantity:1}]),[busy,setBusy]=useState(false);const total=lines.reduce((a,l)=>{const p=products.find(x=>x.id===l.product_id);return a+(p?.sale_price||0)*l.quantity},0);async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();setBusy(true);const f=new FormData(e.currentTarget),{error}=await supabase.rpc('create_sale',{p_items:lines,p_payment_method:f.get('method'),p_status:f.get('status'),p_notes:f.get('notes')||null,p_sold_at:new Date(String(f.get('date'))+'T12:00:00-03:00').toISOString()});setBusy(false);if(error)alert(error.message);else done('Venta registrada correctamente')}return <div className="backdrop"><form className="modal" onSubmit={submit}><ModalHead title="Nueva venta" close={close}/>{!products.length?<Empty text="Primero tenés que crear un producto."/>:<>{lines.map((l,i)=><div className="sale-line"><label>Producto<select value={l.product_id} onChange={e=>setLines(lines.map((x,j)=>j===i?{...x,product_id:e.target.value}:x))}>{products.map(p=><option value={p.id}>{p.name}</option>)}</select></label><label>Cantidad<input type="number" min="1" value={l.quantity} onChange={e=>setLines(lines.map((x,j)=>j===i?{...x,quantity:+e.target.value}:x))}/></label>{lines.length>1&&<button type="button" onClick={()=>setLines(lines.filter((_,j)=>j!==i))}><X/></button>}</div>)}<button type="button" className="row-action" onClick={()=>setLines([...lines,{product_id:products[0].id,quantity:1}])}><Plus/>Agregar producto</button><div className="form-grid"><Select name="method" label="Método" options={methods}/><Select name="status" label="Estado" options={['completed','pending','cancelled']}/><Field name="date" label="Fecha" type="date" value={today()}/></div><Field name="notes" label="Notas"/><div className="calculation"><span>Total de venta<b>{ars.format(total)}</b></span></div><Actions close={close} busy={busy}/></>}</form></div>}
-const methods=['Mercado Pago','Transferencia','Efectivo','Tarjeta','Otro'];function Field({name,label,type='text',value=''}:{name:string;label:string;type?:string;value?:any}){return <label>{label}<input required={name!=='description'&&name!=='notes'} name={name} type={type} min={type==='number'?0:undefined} step={type==='number'?'0.01':undefined} defaultValue={value??''}/></label>}function Select({name,label,options,value}:{name:string;label:string;options:string[];value?:string}){return <label>{label}<select name={name} defaultValue={value}>{options.map(x=><option value={x}>{x}</option>)}</select></label>}function ModalHead({title,close}:{title:string;close:()=>void}){return <div className="modal-head"><div><h2>{title}</h2></div><button type="button" onClick={close}><X/></button></div>}function Actions({close,busy}:{close:()=>void;busy?:boolean}){return <div className="modal-actions"><button type="button" onClick={close}>Cancelar</button><button className="primary" disabled={busy}>{busy?<Loader2 className="spin"/>:'Guardar'}</button></div>}
-function Delete({table,id,reload,notify}:{table:string;id:string;reload:()=>Promise<void>;notify:(s:string)=>void}){return <button className="delete-action" title="Eliminar" onClick={async()=>{if(!confirm('¿Estás seguro de que deseas eliminar este registro?'))return;const{error}=await supabase.from(table).delete().eq('id',id);if(error)alert(error.message);else{await reload();notify('Registro eliminado')}}}><Trash2/></button>}
-function Toolbar({q,setQ,button,action}:{q:string;setQ:(s:string)=>void;button:string;action:()=>void}){return <div className="toolbar"><div className="search"><Search/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar..."/></div><button className="primary" onClick={action}><Plus/>{button}</button></div>}function Status({value}:{value:string}){const names:any={completed:'Completada',pending:'Pendiente',cancelled:'Cancelada',paid:'Pagado'};return <span className={'badge '+value}><i/>{names[value]||value}</span>}function SimpleTable({heads,children,empty}:{heads:string[];children:any;empty:string}){const has=Array.isArray(children)?children.length:!!children;return <section className="panel table-panel">{has?<div className="table-wrap"><table><thead><tr>{heads.map(h=><th>{h}</th>)}</tr></thead><tbody>{children}</tbody></table></div>:<Empty text={empty}/>}</section>}function Empty({text}:{text:string}){return <div className="empty compact"><Boxes/><h2>Sin datos</h2><p>{text}</p></div>}function Loading(){return <div className="loading"><Loader2 className="spin"/>Cargando información...</div>}function daySum(items:Expense[],days:number){const d=new Date();d.setDate(d.getDate()-days);d.setHours(0,0,0,0);return items.filter(x=>new Date(x.expense_date+'T12:00:00-03:00')>=d).reduce((a,x)=>a+Number(x.amount),0)}function today(){return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Buenos_Aires'}).format(new Date())}
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  BarChart3,
+  Boxes,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  CircleDollarSign,
+  Download,
+  FileBarChart,
+  LayoutDashboard,
+  Loader2,
+  Menu,
+  Plus,
+  Receipt,
+  Search,
+  Settings,
+  ShoppingBag,
+  Trash2,
+  UserRound,
+  WalletCards,
+  X,
+} from "lucide-react";
+import { supabase } from "./lib/supabase";
+import { Auth } from "./components/Auth";
+import { useFinancialData } from "./hooks/useFinancialData";
+import type { Expense, Payment, Product, Sale } from "./lib/types";
+type Page =
+  | "Dashboard"
+  | "Ventas"
+  | "Productos"
+  | "Gastos"
+  | "Pagos"
+  | "Estadísticas"
+  | "Reportes";
+type Modal = {
+  kind: "sale" | "product" | "expense" | "payment";
+  item?: any;
+} | null;
+type Period = "today" | "7" | "30" | "month" | "year" | "all";
+const nav = [
+  ["Dashboard", LayoutDashboard],
+  ["Ventas", ShoppingBag],
+  ["Productos", Boxes],
+  ["Gastos", Receipt],
+  ["Pagos", WalletCards],
+  ["Estadísticas", BarChart3],
+  ["Reportes", FileBarChart],
+] as const;
+const ars = new Intl.NumberFormat("es-AR", {
+  style: "currency",
+  currency: "ARS",
+  maximumFractionDigits: 0,
+});
+const date = (v: string) =>
+  new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+  }).format(new Date(v.length === 10 ? v + "T12:00:00-03:00" : v));
+function since(p: Period) {
+  const n = new Date(),
+    d = new Date(n);
+  if (p === "today") d.setHours(0, 0, 0, 0);
+  if (p === "7") d.setDate(n.getDate() - 6);
+  if (p === "30") d.setDate(n.getDate() - 29);
+  if (p === "month") d.setDate(1);
+  if (p === "year") d.setMonth(0, 1);
+  return p === "all" ? null : d;
+}
+export default function App() {
+  const [session, setSession] = useState<Session | null | undefined>(),
+    [page, setPage] = useState<Page>("Dashboard"),
+    [menu, setMenu] = useState(false),
+    [modal, setModal] = useState<Modal>(null),
+    [period, setPeriod] = useState<Period>("month"),
+    [toast, setToast] = useState("");
+  const data = useFinancialData();
+  useEffect(() => {
+    supabase.auth.getSession().then((x) => setSession(x.data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+  if (session === undefined) return <div className="auth-page" />;
+  if (!session) return <Auth />;
+  const notify = (m: string) => {
+    setToast(m);
+    setTimeout(() => setToast(""), 2500);
+  };
+  return (
+    <div className="shell">
+      <aside className={menu ? "open" : ""}>
+        <div className="logo">
+          <img src="/brand/jcb-wordmark.png" />
+          <button onClick={() => setMenu(false)}>
+            <X />
+          </button>
+        </div>
+        <div className="nav-label">GESTIÓN</div>
+        <nav>
+          {nav.map(([n, I]) => (
+            <button
+              className={page === n ? "active" : ""}
+              onClick={() => {
+                setPage(n);
+                setMenu(false);
+              }}
+            >
+              <I />
+              {n}
+            </button>
+          ))}
+        </nav>
+        <div className="aside-bottom">
+          <button>
+            <Settings />
+            Configuración
+          </button>
+          <button onClick={() => supabase.auth.signOut()}>
+            <UserRound />
+            Cerrar sesión
+          </button>
+          <div className="user">
+            <div>
+              <img src="/brand/jb-mark.png" />
+            </div>
+            <span>
+              <b>{session.user.user_metadata.name || "JCB Developement"}</b>
+              <small>{session.user.email}</small>
+            </span>
+          </div>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <button className="hamb" onClick={() => setMenu(true)}>
+            <Menu />
+          </button>
+          <div>
+            <h1>{page}</h1>
+            <p>
+              {page === "Dashboard"
+                ? "Todo lo importante de tu negocio, en un solo lugar."
+                : "Datos reales, seguros y actualizados."}
+            </p>
+          </div>
+          <div className="header-actions">
+            <span className="sync live">
+              <i />
+              Supabase
+            </span>
+            <PeriodSelect value={period} set={setPeriod} />
+            {(page === "Dashboard" || page === "Ventas") && (
+              <button
+                className="primary"
+                onClick={() => setModal({ kind: "sale" })}
+              >
+                <Plus />
+                Agregar venta
+              </button>
+            )}
+          </div>
+        </header>
+        {data.error && (
+          <div className="error-state">
+            {data.error}
+            <button onClick={data.reload}>Reintentar</button>
+          </div>
+        )}
+        {data.loading ? (
+          <Loading />
+        ) : (
+          <Content
+            page={page}
+            data={data}
+            period={period}
+            modal={setModal}
+            notify={notify}
+          />
+        )}
+      </main>
+      {modal && (
+        <DataModal
+          modal={modal}
+          products={data.products}
+          userId={session.user.id}
+          close={() => setModal(null)}
+          done={async (m) => {
+            setModal(null);
+            await data.reload();
+            notify(m);
+          }}
+        />
+      )}
+      {toast && (
+        <div className="toast">
+          <Check />
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+function Content({
+  page,
+  data,
+  period,
+  modal,
+  notify,
+}: {
+  page: Page;
+  data: ReturnType<typeof useFinancialData>;
+  period: Period;
+  modal: (m: Modal) => void;
+  notify: (m: string) => void;
+}) {
+  const start = since(period),
+    sales = data.sales.filter((x) => !start || new Date(x.sold_at) >= start),
+    expenses = data.expenses.filter(
+      (x) => !start || new Date(x.expense_date + "T12:00:00-03:00") >= start,
+    );
+  if (page === "Dashboard")
+    return <Dashboard sales={sales} expenses={expenses} />;
+  if (page === "Ventas")
+    return <SalesPage sales={sales} open={() => modal({ kind: "sale" })} />;
+  if (page === "Productos")
+    return (
+      <ProductsPage
+        items={data.products}
+        open={(x) => modal({ kind: "product", item: x })}
+        reload={data.reload}
+        notify={notify}
+      />
+    );
+  if (page === "Gastos")
+    return (
+      <ExpensesPage
+        items={data.expenses}
+        open={(x) => modal({ kind: "expense", item: x })}
+        reload={data.reload}
+        notify={notify}
+      />
+    );
+  if (page === "Pagos")
+    return (
+      <PaymentsPage
+        items={data.payments}
+        open={(x) => modal({ kind: "payment", item: x })}
+        reload={data.reload}
+        notify={notify}
+      />
+    );
+  if (page === "Estadísticas")
+    return <Stats sales={sales} expenses={expenses} products={data.products} />;
+  return <Reports sales={sales} expenses={expenses} notify={notify} />;
+}
+function PeriodSelect({
+  value,
+  set,
+}: {
+  value: Period;
+  set: (p: Period) => void;
+}) {
+  return (
+    <label className="period">
+      <CalendarDays />
+      <select value={value} onChange={(e) => set(e.target.value as Period)}>
+        <option value="today">Hoy</option>
+        <option value="7">Últimos 7 días</option>
+        <option value="30">Últimos 30 días</option>
+        <option value="month">Este mes</option>
+        <option value="year">Este año</option>
+        <option value="all">Todo</option>
+      </select>
+      <ChevronDown />
+    </label>
+  );
+}
+function totals(sales: Sale[], expenses: Expense[]) {
+  const valid = sales.filter((s) => s.status === "completed"),
+    revenue = valid.reduce((a, s) => a + Number(s.total), 0),
+    cost = valid.reduce((a, s) => a + Number(s.total_cost), 0),
+    expense = expenses.reduce((a, e) => a + Number(e.amount), 0),
+    gross = revenue - cost,
+    net = gross - expense;
+  return {
+    revenue,
+    cost,
+    expense,
+    gross,
+    net,
+    margin: revenue ? (net / revenue) * 100 : 0,
+    count: valid.length,
+  };
+}
+function Dashboard({
+  sales,
+  expenses,
+}: {
+  sales: Sale[];
+  expenses: Expense[];
+}) {
+  const t = totals(sales, expenses),
+    chart = groupSales(sales);
+  return (
+    <>
+      <section className="metric-grid">
+        <Metric title="Ventas" value={ars.format(t.revenue)} />
+        <Metric title="Ganancia neta" value={ars.format(t.net)} />
+        <Metric title="Costos" value={ars.format(t.cost)} />
+        <Metric title="Gastos" value={ars.format(t.expense)} />
+        <Metric title="Margen" value={t.margin.toFixed(1) + "%"} />
+      </section>
+      <section className="panel chart-panel">
+        <div className="panel-head">
+          <div>
+            <h2>Rendimiento financiero</h2>
+            <p>{t.count} ventas completadas</p>
+          </div>
+        </div>
+        {chart.length ? (
+          <>
+            <div className="chart-legends">
+              <span>
+                <i className="purple" />
+                Ventas
+              </span>
+              <span>
+                <i className="amber" />
+                Costos
+              </span>
+              <span>
+                <i className="green" />
+                Ganancia
+              </span>
+            </div>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={chart}>
+                <CartesianGrid vertical={false} stroke="#edf0f3" />
+                <XAxis dataKey="day" />
+                <YAxis />
+                <Tooltip formatter={(v) => ars.format(Number(v))} />
+                <Area dataKey="sales" stroke="#8b2cf5" fill="#8b2cf522" />
+                <Area dataKey="cost" stroke="#aeb2bb" fill="transparent" />
+                <Area dataKey="profit" stroke="#6120aa" fill="transparent" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </>
+        ) : (
+          <Empty text="Todavía no registraste ventas." />
+        )}
+        <div className="chart-summary">
+          <span>
+            Ventas totales<b>{ars.format(t.revenue)}</b>
+          </span>
+          <span>
+            Ganancia bruta<b>{ars.format(t.gross)}</b>
+          </span>
+          <span>
+            Ganancia neta<b>{ars.format(t.net)}</b>
+          </span>
+        </div>
+      </section>
+      <SalesTable sales={sales.slice(0, 5)} title="Últimas ventas" />
+    </>
+  );
+}
+function Metric({ title, value }: { title: string; value: string }) {
+  return (
+    <article className="metric">
+      <div className="metric-top">
+        <span>{title}</span>
+        <CircleDollarSign />
+      </div>
+      <strong>{value}</strong>
+      <div className="change good">
+        <ArrowUpRight />
+        <span>Datos del período</span>
+      </div>
+    </article>
+  );
+}
+function groupSales(sales: Sale[]) {
+  const m = new Map<
+    string,
+    { day: string; sales: number; cost: number; profit: number }
+  >();
+  sales
+    .filter((x) => x.status === "completed")
+    .forEach((s) => {
+      const k = s.sold_at.slice(0, 10),
+        v = m.get(k) || { day: date(k), sales: 0, cost: 0, profit: 0 };
+      v.sales += +s.total;
+      v.cost += +s.total_cost;
+      v.profit += +s.profit;
+      m.set(k, v);
+    });
+  return [...m.values()].slice(-31);
+}
+function SalesPage({ sales, open }: { sales: Sale[]; open: () => void }) {
+  const [q, setQ] = useState("");
+  const list = sales.filter((s) =>
+    (s.payment_method + s.status).toLowerCase().includes(q.toLowerCase()),
+  );
+  return (
+    <>
+      <Toolbar q={q} setQ={setQ} button="Nueva venta" action={open} />
+      <SalesTable sales={list} title="Todas las ventas" />
+    </>
+  );
+}
+function SalesTable({ sales, title }: { sales: Sale[]; title: string }) {
+  return (
+    <section className="panel table-panel">
+      <div className="panel-head">
+        <div>
+          <h2>{title}</h2>
+          <p>{sales.length} registros</p>
+        </div>
+      </div>
+      {sales.length ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>FECHA</th>
+                <th>PRODUCTOS</th>
+                <th>TOTAL</th>
+                <th>COSTO</th>
+                <th>GANANCIA</th>
+                <th>MÉTODO</th>
+                <th>ESTADO</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sales.map((s) => (
+                <tr>
+                  <td>{date(s.sold_at)}</td>
+                  <td>
+                    <b>
+                      {s.sale_items?.map((i) => i.products?.name).join(", ") ||
+                        "Venta"}
+                    </b>
+                  </td>
+                  <td>{ars.format(s.total)}</td>
+                  <td>{ars.format(s.total_cost)}</td>
+                  <td className="profit">{ars.format(s.profit)}</td>
+                  <td>{s.payment_method}</td>
+                  <td>
+                    <Status value={s.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty text="No hay ventas para mostrar." />
+      )}
+    </section>
+  );
+}
+function ProductsPage({
+  items,
+  open,
+  reload,
+  notify,
+}: {
+  items: Product[];
+  open: (x?: Product) => void;
+  reload: () => Promise<void>;
+  notify: (s: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const list = items.filter((x) =>
+    (x.name + x.category).toLowerCase().includes(q.toLowerCase()),
+  );
+  return (
+    <>
+      <Toolbar
+        q={q}
+        setQ={setQ}
+        button="Agregar producto"
+        action={() => open()}
+      />
+      <section className="panel table-panel">
+        <div className="panel-head">
+          <div>
+            <h2>Productos</h2>
+            <p>{list.length} registros</p>
+          </div>
+        </div>
+        {list.length ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>PRODUCTO</th>
+                  <th>CATEGORÍA</th>
+                  <th>PRECIO</th>
+                  <th>COSTO</th>
+                  <th>GANANCIA/U.</th>
+                  <th>MARGEN</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((p) => (
+                  <tr>
+                    <td>
+                      <b>{p.name}</b>
+                    </td>
+                    <td>{p.category}</td>
+                    <td>{ars.format(p.sale_price)}</td>
+                    <td>{ars.format(p.cost_price)}</td>
+                    <td className="profit">
+                      {ars.format(p.sale_price - p.cost_price)}
+                    </td>
+                    <td>
+                      {p.sale_price
+                        ? (
+                            ((p.sale_price - p.cost_price) / p.sale_price) *
+                            100
+                          ).toFixed(1)
+                        : 0}
+                      %
+                    </td>
+                    <td>
+                      <button className="row-action" onClick={() => open(p)}>
+                        Editar
+                      </button>
+                      <Delete
+                        table="products"
+                        id={p.id}
+                        reload={reload}
+                        notify={notify}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty text="Creá tu primer producto para comenzar." />
+        )}
+      </section>
+    </>
+  );
+}
+function ExpensesPage({
+  items,
+  open,
+  reload,
+  notify,
+}: {
+  items: Expense[];
+  open: (x?: Expense) => void;
+  reload: () => Promise<void>;
+  notify: (s: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const list = items.filter((x) =>
+      (x.name + x.category).toLowerCase().includes(q.toLowerCase()),
+    ),
+    sum = list.reduce((a, x) => a + Number(x.amount), 0);
+  return (
+    <>
+      <Toolbar
+        q={q}
+        setQ={setQ}
+        button="Registrar gasto"
+        action={() => open()}
+      />
+      <section className="metric-grid four">
+        <Metric title="Total gastos" value={ars.format(sum)} />
+        <Metric title="Hoy" value={ars.format(daySum(items, 0))} />
+        <Metric title="Últimos 7 días" value={ars.format(daySum(items, 6))} />
+        <Metric title="Últimos 30 días" value={ars.format(daySum(items, 29))} />
+      </section>
+      <SimpleTable
+        heads={["GASTO", "CATEGORÍA", "FECHA", "MONTO", "ACCIONES"]}
+        empty="No hay gastos registrados."
+      >
+        {list.map((e) => (
+          <tr>
+            <td>
+              <b>{e.name}</b>
+            </td>
+            <td>{e.category}</td>
+            <td>{date(e.expense_date)}</td>
+            <td>{ars.format(e.amount)}</td>
+            <td>
+              <button className="row-action" onClick={() => open(e)}>
+                Editar
+              </button>
+              <Delete
+                table="expenses"
+                id={e.id}
+                reload={reload}
+                notify={notify}
+              />
+            </td>
+          </tr>
+        ))}
+      </SimpleTable>
+    </>
+  );
+}
+function PaymentsPage({
+  items,
+  open,
+  reload,
+  notify,
+}: {
+  items: Payment[];
+  open: (x?: Payment) => void;
+  reload: () => Promise<void>;
+  notify: (s: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const list = items.filter((x) =>
+    (x.concept + x.payment_method + x.status)
+      .toLowerCase()
+      .includes(q.toLowerCase()),
+  );
+  return (
+    <>
+      <Toolbar
+        q={q}
+        setQ={setQ}
+        button="Registrar pago"
+        action={() => open()}
+      />
+      <SimpleTable
+        heads={["CONCEPTO", "MÉTODO", "FECHA", "MONTO", "ESTADO", "ACCIONES"]}
+        empty="No hay pagos registrados."
+      >
+        {list.map((p) => (
+          <tr>
+            <td>
+              <b>{p.concept}</b>
+            </td>
+            <td>{p.payment_method}</td>
+            <td>{date(p.payment_date)}</td>
+            <td>{ars.format(p.amount)}</td>
+            <td>
+              <Status value={p.status} />
+            </td>
+            <td>
+              <button className="row-action" onClick={() => open(p)}>
+                Editar
+              </button>
+              <Delete
+                table="payments"
+                id={p.id}
+                reload={reload}
+                notify={notify}
+              />
+            </td>
+          </tr>
+        ))}
+      </SimpleTable>
+    </>
+  );
+}
+function Stats({
+  sales,
+  expenses,
+  products,
+}: {
+  sales: Sale[];
+  expenses: Expense[];
+  products: Product[];
+}) {
+  const t = totals(sales, expenses),
+    chart = groupSales(sales),
+    rank = new Map<
+      string,
+      { name: string; units: number; revenue: number; profit: number }
+    >();
+  sales.forEach((s) =>
+    s.sale_items?.forEach((i) => {
+      const n = i.products?.name || "Producto",
+        v = rank.get(i.product_id) || {
+          name: n,
+          units: 0,
+          revenue: 0,
+          profit: 0,
+        };
+      v.units += i.quantity;
+      v.revenue += +i.subtotal;
+      v.profit += +i.profit;
+      rank.set(i.product_id, v);
+    }),
+  );
+  return (
+    <>
+      <section className="metric-grid four">
+        <Metric title="Ventas" value={ars.format(t.revenue)} />
+        <Metric title="Ganancia neta" value={ars.format(t.net)} />
+        <Metric title="Costos" value={ars.format(t.cost)} />
+        <Metric title="Margen" value={t.margin.toFixed(1) + "%"} />
+      </section>
+      <section className="two-cols">
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Evolución real</h2>
+              <p>Según el período seleccionado</p>
+            </div>
+          </div>
+          {chart.length ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={chart}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="day" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="sales" fill="#8b2cf5" />
+                <Bar dataKey="profit" fill="#b997df" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <Empty text="No hay datos suficientes." />
+          )}
+        </section>
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Productos destacados</h2>
+              <p>Por unidades vendidas</p>
+            </div>
+          </div>
+          {[...rank.values()]
+            .sort((a, b) => b.units - a.units)
+            .slice(0, 5)
+            .map((x) => (
+              <div className="ranking">
+                <span>
+                  <b>{x.name}</b>
+                  <small>{x.units} unidades</small>
+                </span>
+                <strong>{ars.format(x.revenue)}</strong>
+              </div>
+            ))}
+          {!rank.size && <Empty text="Sin ventas de productos." />}
+        </section>
+      </section>
+    </>
+  );
+}
+function Reports({
+  sales,
+  expenses,
+  notify,
+}: {
+  sales: Sale[];
+  expenses: Expense[];
+  notify: (s: string) => void;
+}) {
+  const t = totals(sales, expenses),
+    rows = [
+      ["Ventas", t.revenue],
+      ["Costos", t.cost],
+      ["Gastos", t.expense],
+      ["Ganancia bruta", t.gross],
+      ["Ganancia neta", t.net],
+      ["Margen", t.margin],
+    ];
+  function exportFile(kind: "csv" | "xls") {
+    const sep = kind === "csv" ? "," : "\t",
+      blob = new Blob([rows.map((r) => r.join(sep)).join("\n")], {
+        type: "text/plain",
+      }),
+      a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "reporte-financiero." + kind;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    notify("Reporte exportado");
+  }
+  return (
+    <>
+      <section className="report-hero panel">
+        <div>
+          <span>REPORTE FINANCIERO</span>
+          <h2>Resumen del período</h2>
+          <p>Información obtenida directamente de Supabase.</p>
+        </div>
+        <div className="export">
+          <button onClick={() => exportFile("csv")}>
+            <Download />
+            CSV
+          </button>
+          <button onClick={() => exportFile("xls")}>
+            <Download />
+            Excel
+          </button>
+          <button className="primary" onClick={() => window.print()}>
+            <Download />
+            PDF
+          </button>
+        </div>
+      </section>
+      <section className="report-grid">
+        {rows.map(([n, v]) => (
+          <article>
+            <span>{n}</span>
+            <b>
+              {n === "Margen"
+                ? Number(v).toFixed(1) + "%"
+                : ars.format(Number(v))}
+            </b>
+          </article>
+        ))}
+      </section>
+    </>
+  );
+}
+function DataModal({
+  modal,
+  products,
+  userId,
+  close,
+  done,
+}: {
+  modal: Exclude<Modal, null>;
+  products: Product[];
+  userId: string;
+  close: () => void;
+  done: (s: string) => void;
+}) {
+  if (modal.kind === "sale")
+    return <SaleModal products={products} close={close} done={done} />;
+  const item = modal.item || {},
+    isProduct = modal.kind === "product",
+    isExpense = modal.kind === "expense";
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget),
+      payload: any = { user_id: userId };
+    if (isProduct)
+      Object.assign(payload, {
+        name: f.get("name"),
+        category: f.get("category"),
+        sale_price: +String(f.get("sale_price")),
+        cost_price: +String(f.get("cost_price")),
+      });
+    else if (isExpense)
+      Object.assign(payload, {
+        name: f.get("name"),
+        category: f.get("category"),
+        amount: +String(f.get("amount")),
+        description: f.get("description"),
+        expense_date: f.get("date"),
+      });
+    else
+      Object.assign(payload, {
+        concept: f.get("concept"),
+        amount: +String(f.get("amount")),
+        payment_method: f.get("method"),
+        status: f.get("status"),
+        payment_date: f.get("date"),
+        notes: f.get("notes"),
+      });
+    const table = isProduct ? "products" : isExpense ? "expenses" : "payments",
+      q = item.id
+        ? supabase.from(table).update(payload).eq("id", item.id)
+        : supabase.from(table).insert(payload),
+      { error } = await q;
+    if (error) alert(error.message);
+    else done(item.id ? "Registro actualizado" : "Registro creado");
+  }
+  return (
+    <div className="backdrop">
+      <form className="modal" onSubmit={submit}>
+        <ModalHead
+          title={
+            (item.id ? "Editar " : "Nuevo ") +
+            (isProduct ? "producto" : isExpense ? "gasto" : "pago")
+          }
+          close={close}
+        />
+        {isProduct ? (
+          <>
+            <Field name="name" label="Nombre" value={item.name} />
+            <div className="form-grid">
+              <Field name="category" label="Categoría" value={item.category} />
+              <Field
+                name="sale_price"
+                label="Precio de venta"
+                type="number"
+                value={item.sale_price ?? 0}
+              />
+              <Field
+                name="cost_price"
+                label="Costo"
+                type="number"
+                value={item.cost_price ?? 0}
+              />
+            </div>
+          </>
+        ) : isExpense ? (
+          <>
+            <Field name="name" label="Nombre" value={item.name} />
+            <div className="form-grid">
+              <Select
+                name="category"
+                label="Categoría"
+                options={[
+                  "📢 Publicidad y Marketing",
+                  "🖥️ Hosting",
+                  "🌐 Dominios",
+                  "🧩 Software y Herramientas",
+                  "📦 Productos / Mercadería",
+                  "🚚 Envíos y Logística",
+                  "🏭 Proveedores",
+                  "💳 Comisiones de Pago",
+                  "🛍️ Comisiones de Marketplace",
+                  "💼 Servicios Profesionales",
+                  "👥 Sueldos y Personal",
+                  "🏢 Alquiler",
+                  "💡 Servicios e Infraestructura",
+                  "📞 Telefonía e Internet",
+                  "🎨 Diseño y Contenido",
+                  "📸 Fotografía / Video",
+                  "🔄 Devoluciones y Reembolsos",
+                  "🧾 Impuestos",
+                  "🏦 Gastos Bancarios",
+                  "💸 Otros",
+                ]}
+                value={item.category}
+              />
+              <Field
+                name="amount"
+                label="Monto"
+                type="number"
+                value={item.amount ?? 0}
+              />
+              <Field
+                name="date"
+                label="Fecha"
+                type="date"
+                value={item.expense_date || today()}
+              />
+            </div>
+            <Field
+              name="description"
+              label="Descripción"
+              value={item.description}
+            />
+          </>
+        ) : (
+          <>
+            <Field name="concept" label="Concepto" value={item.concept} />
+            <div className="form-grid">
+              <Field
+                name="amount"
+                label="Monto"
+                type="number"
+                value={item.amount ?? 0}
+              />
+              <Select
+                name="method"
+                label="Método"
+                options={methods}
+                value={item.payment_method}
+              />
+              <Select
+                name="status"
+                label="Estado"
+                options={["paid", "pending", "cancelled"]}
+                value={item.status}
+              />
+              <Field
+                name="date"
+                label="Fecha"
+                type="date"
+                value={item.payment_date || today()}
+              />
+            </div>
+            <Field name="notes" label="Notas" value={item.notes} />
+          </>
+        )}
+        <Actions close={close} />
+      </form>
+    </div>
+  );
+}
+function SaleModal({
+  products,
+  close,
+  done,
+}: {
+  products: Product[];
+  close: () => void;
+  done: (s: string) => void;
+}) {
+  const [lines, setLines] = useState([
+      { product_id: products[0]?.id || "", quantity: 1 },
+    ]),
+    [busy, setBusy] = useState(false);
+  const total = lines.reduce((a, l) => {
+    const p = products.find((x) => x.id === l.product_id);
+    return a + (p?.sale_price || 0) * l.quantity;
+  }, 0);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    const f = new FormData(e.currentTarget),
+      { error } = await supabase.rpc("create_sale", {
+        p_items: lines,
+        p_payment_method: f.get("method"),
+        p_status: f.get("status"),
+        p_notes: f.get("notes") || null,
+        p_sold_at: new Date(
+          String(f.get("date")) + "T12:00:00-03:00",
+        ).toISOString(),
+      });
+    setBusy(false);
+    if (error) alert(error.message);
+    else done("Venta registrada correctamente");
+  }
+  return (
+    <div className="backdrop">
+      <form className="modal" onSubmit={submit}>
+        <ModalHead title="Nueva venta" close={close} />
+        {!products.length ? (
+          <Empty text="Primero tenés que crear un producto." />
+        ) : (
+          <>
+            {lines.map((l, i) => (
+              <div className="sale-line">
+                <label>
+                  Producto
+                  <select
+                    value={l.product_id}
+                    onChange={(e) =>
+                      setLines(
+                        lines.map((x, j) =>
+                          j === i ? { ...x, product_id: e.target.value } : x,
+                        ),
+                      )
+                    }
+                  >
+                    {products.map((p) => (
+                      <option value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Cantidad
+                  <input
+                    type="number"
+                    min="1"
+                    value={l.quantity}
+                    onChange={(e) =>
+                      setLines(
+                        lines.map((x, j) =>
+                          j === i ? { ...x, quantity: +e.target.value } : x,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+                {lines.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setLines(lines.filter((_, j) => j !== i))}
+                  >
+                    <X />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              className="row-action"
+              onClick={() =>
+                setLines([
+                  ...lines,
+                  { product_id: products[0].id, quantity: 1 },
+                ])
+              }
+            >
+              <Plus />
+              Agregar producto
+            </button>
+            <div className="form-grid">
+              <Select name="method" label="Método" options={methods} />
+              <Select
+                name="status"
+                label="Estado"
+                options={["completed", "pending", "cancelled"]}
+              />
+              <Field name="date" label="Fecha" type="date" value={today()} />
+            </div>
+            <Field name="notes" label="Notas" />
+            <div className="calculation">
+              <span>
+                Total de venta<b>{ars.format(total)}</b>
+              </span>
+            </div>
+            <Actions close={close} busy={busy} />
+          </>
+        )}
+      </form>
+    </div>
+  );
+}
+const methods = [
+  "Mercado Pago",
+  "Transferencia",
+  "Efectivo",
+  "Tarjeta",
+  "Otro",
+];
+function Field({
+  name,
+  label,
+  type = "text",
+  value = "",
+}: {
+  name: string;
+  label: string;
+  type?: string;
+  value?: any;
+}) {
+  return (
+    <label>
+      {label}
+      <input
+        required={name !== "description" && name !== "notes"}
+        name={name}
+        type={type}
+        min={type === "number" ? 0 : undefined}
+        step={type === "number" ? "0.01" : undefined}
+        defaultValue={value ?? ""}
+      />
+    </label>
+  );
+}
+function Select({
+  name,
+  label,
+  options,
+  value,
+}: {
+  name: string;
+  label: string;
+  options: string[];
+  value?: string;
+}) {
+  return (
+    <label>
+      {label}
+      <select name={name} defaultValue={value}>
+        {options.map((x) => (
+          <option value={x}>{x}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+function ModalHead({ title, close }: { title: string; close: () => void }) {
+  return (
+    <div className="modal-head">
+      <div>
+        <h2>{title}</h2>
+      </div>
+      <button type="button" onClick={close}>
+        <X />
+      </button>
+    </div>
+  );
+}
+function Actions({ close, busy }: { close: () => void; busy?: boolean }) {
+  return (
+    <div className="modal-actions">
+      <button type="button" onClick={close}>
+        Cancelar
+      </button>
+      <button className="primary" disabled={busy}>
+        {busy ? <Loader2 className="spin" /> : "Guardar"}
+      </button>
+    </div>
+  );
+}
+function Delete({
+  table,
+  id,
+  reload,
+  notify,
+}: {
+  table: string;
+  id: string;
+  reload: () => Promise<void>;
+  notify: (s: string) => void;
+}) {
+  return (
+    <button
+      className="delete-action"
+      title="Eliminar"
+      onClick={async () => {
+        if (!confirm("¿Estás seguro de que deseas eliminar este registro?"))
+          return;
+        const { error } = await supabase.from(table).delete().eq("id", id);
+        if (error) alert(error.message);
+        else {
+          await reload();
+          notify("Registro eliminado");
+        }
+      }}
+    >
+      <Trash2 />
+    </button>
+  );
+}
+function Toolbar({
+  q,
+  setQ,
+  button,
+  action,
+}: {
+  q: string;
+  setQ: (s: string) => void;
+  button: string;
+  action: () => void;
+}) {
+  return (
+    <div className="toolbar">
+      <div className="search">
+        <Search />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar..."
+        />
+      </div>
+      <button className="primary" onClick={action}>
+        <Plus />
+        {button}
+      </button>
+    </div>
+  );
+}
+function Status({ value }: { value: string }) {
+  const names: any = {
+    completed: "Completada",
+    pending: "Pendiente",
+    cancelled: "Cancelada",
+    paid: "Pagado",
+  };
+  return (
+    <span className={"badge " + value}>
+      <i />
+      {names[value] || value}
+    </span>
+  );
+}
+function SimpleTable({
+  heads,
+  children,
+  empty,
+}: {
+  heads: string[];
+  children: any;
+  empty: string;
+}) {
+  const has = Array.isArray(children) ? children.length : !!children;
+  return (
+    <section className="panel table-panel">
+      {has ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                {heads.map((h) => (
+                  <th>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>{children}</tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty text={empty} />
+      )}
+    </section>
+  );
+}
+function Empty({ text }: { text: string }) {
+  return (
+    <div className="empty compact">
+      <Boxes />
+      <h2>Sin datos</h2>
+      <p>{text}</p>
+    </div>
+  );
+}
+function Loading() {
+  return (
+    <div className="loading">
+      <Loader2 className="spin" />
+      Cargando información...
+    </div>
+  );
+}
+function daySum(items: Expense[], days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  d.setHours(0, 0, 0, 0);
+  return items
+    .filter((x) => new Date(x.expense_date + "T12:00:00-03:00") >= d)
+    .reduce((a, x) => a + Number(x.amount), 0);
+}
+function today() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+  }).format(new Date());
+}
