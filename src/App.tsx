@@ -622,93 +622,27 @@ function SalesTable({ sales, title }: { sales: Sale[]; title: string }) {
     </section>
   );
 }
-function ProductsPage({
-  items,
-  open,
-  reload,
-  notify,
-}: {
-  items: Product[];
-  open: (x?: Product) => void;
-  reload: () => Promise<void>;
-  notify: (s: string) => void;
-}) {
-  const [q, setQ] = useState("");
-  const list = items.filter((x) =>
-    (x.name + x.category).toLowerCase().includes(q.toLowerCase()),
-  );
-  return (
-    <>
-      <Toolbar
-        q={q}
-        setQ={setQ}
-        button="Agregar producto"
-        action={() => open()}
-      />
-      <section className="panel table-panel">
-        <div className="panel-head">
-          <div>
-            <h2>Productos</h2>
-            <p>{list.length} registros</p>
-          </div>
-        </div>
-        {list.length ? (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>PRODUCTO</th>
-                  <th>CATEGORÍA</th>
-                  <th>PRECIO</th>
-                  <th>COSTO</th>
-                  <th>GANANCIA/U.</th>
-                  <th>MARGEN</th>
-                  <th>ACCIONES</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((p) => (
-                  <tr>
-                    <td>
-                      <b>{p.name}</b>
-                    </td>
-                    <td>{p.category}</td>
-                    <td>{ars.format(p.sale_price)}</td>
-                    <td>{ars.format(p.cost_price)}</td>
-                    <td className="profit">
-                      {ars.format(p.sale_price - p.cost_price)}
-                    </td>
-                    <td>
-                      {p.sale_price
-                        ? (
-                            ((p.sale_price - p.cost_price) / p.sale_price) *
-                            100
-                          ).toFixed(1)
-                        : 0}
-                      %
-                    </td>
-                    <td>
-                      <button className="row-action" onClick={() => open(p)}>
-                        Editar
-                      </button>
-                      <Delete
-                        table="products"
-                        id={p.id}
-                        reload={reload}
-                        notify={notify}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty text="Creá tu primer producto para comenzar." />
-        )}
-      </section>
-    </>
-  );
+function ProductsPage({ items, open, reload, notify }: { items: Product[]; open: (x?: Product) => void; reload: () => Promise<void>; notify: (s: string) => void }) {
+  const [q, setQ] = useState(""), [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const list = items.filter((x) => (x.name + " " + x.category).toLowerCase().includes(q.trim().toLowerCase()));
+  const groups = useMemo(() => Object.entries(list.reduce<Record<string, Product[]>>((all, product) => {
+    const category = product.category?.trim() || "Sin categoría";
+    (all[category] ||= []).push(product); return all;
+  }, {})).sort(([a], [b]) => a.localeCompare(b, "es")), [list]);
+  const toggle = (category: string) => setCollapsed((current) => { const next = new Set(current); next.has(category) ? next.delete(category) : next.add(category); return next; });
+  return <>
+    <Toolbar q={q} setQ={setQ} button="Agregar producto" action={() => open()} />
+    <div className="products-summary"><span><b>{list.length}</b> productos en <b>{groups.length}</b> categorías</span>{groups.length > 0 && <div><button onClick={() => setCollapsed(new Set())}>Expandir todas</button><button onClick={() => setCollapsed(new Set(groups.map(([category]) => category)))}>Minimizar todas</button></div>}</div>
+    {list.length ? groups.map(([category, products]) => {
+      const isCollapsed = !q && collapsed.has(category);
+      return <section className="panel table-panel product-category" key={category}>
+        <button className="category-bar" onClick={() => toggle(category)} aria-expanded={!isCollapsed}><span><b>{category}</b><small>{products.length} {products.length === 1 ? "producto" : "productos"}</small></span><ChevronDown className={isCollapsed ? "" : "open"} /></button>
+        {!isCollapsed && <div className="table-wrap"><table><thead><tr><th>PRODUCTO</th><th>PRECIO</th><th>COSTO</th><th>GANANCIA/U.</th><th>MARGEN</th><th>ACCIONES</th></tr></thead><tbody>
+          {products.map((p) => <tr key={p.id}><td><b>{p.name}</b></td><td>{ars.format(p.sale_price)}</td><td>{ars.format(p.cost_price)}</td><td className="profit">{ars.format(p.sale_price - p.cost_price)}</td><td>{p.sale_price ? (((p.sale_price - p.cost_price) / p.sale_price) * 100).toFixed(1) : 0}%</td><td><button className="row-action" onClick={() => open(p)}>Editar</button><Delete table="products" id={p.id} reload={reload} notify={notify} /></td></tr>)}
+        </tbody></table></div>}
+      </section>;
+    }) : <section className="panel"><Empty text={q ? "No encontramos productos con esa búsqueda." : "Creá tu primer producto para comenzar."} /></section>}
+  </>;
 }
 function ExpensesPage({
   items,
