@@ -1131,6 +1131,12 @@ const methods = [
   "Tarjeta",
   "Otro",
 ];
+const optionLabels: Record<string, string> = {
+  paid: "Pagado",
+  pending: "Pendiente",
+  cancelled: "Cancelado",
+  completed: "Completada",
+};
 function Field({
   name,
   label,
@@ -1172,7 +1178,9 @@ function Select({
       {label}
       <select name={name} defaultValue={value}>
         {options.map((x) => (
-          <option value={x}>{x}</option>
+          <option key={x} value={x}>
+            {optionLabels[x] ?? x}
+          </option>
         ))}
       </select>
     </label>
