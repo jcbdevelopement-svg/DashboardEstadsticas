@@ -482,11 +482,11 @@ function Dashboard({
   return (
     <>
       <section className="metric-grid">
-        <Metric title="Ventas" value={ars.format(t.revenue)} />
-        <Metric title="Ganancia neta" value={ars.format(t.net)} />
-        <Metric title="Costos" value={ars.format(t.cost)} />
-        <Metric title="Gastos" value={ars.format(t.expense)} />
-        <Metric title="Margen" value={t.margin.toFixed(1) + "%"} />
+        <Metric title="Ventas" value={ars.format(t.revenue)} tone="brand" />
+        <Metric title="Ganancia neta" value={ars.format(t.net)} tone="green" />
+        <Metric title="Costos" value={ars.format(t.cost)} tone="red" />
+        <Metric title="Gastos" value={ars.format(t.expense)} tone="orange" />
+        <Metric title="Margen" value={t.margin.toFixed(1) + "%"} tone="brand" />
       </section>
       <section className="panel chart-panel">
         <div className="panel-head">
@@ -542,9 +542,9 @@ function Dashboard({
     </>
   );
 }
-function Metric({ title, value }: { title: string; value: string }) {
+function Metric({ title, value, tone }: { title: string; value: string; tone?: "brand" | "green" | "red" | "orange" }) {
   return (
-    <article className="metric">
+    <article className={`metric${tone ? ` metric-${tone}` : ""}`}>
       <div className="metric-top">
         <span>{title}</span>
         <CircleDollarSign />
