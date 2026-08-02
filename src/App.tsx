@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   Area,
@@ -276,19 +276,54 @@ function PeriodSelect({
   value: Period;
   set: (p: Period) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const options: Array<{ value: Period; label: string }> = [
+    { value: "today", label: "Hoy" },
+    { value: "7", label: "Últimos 7 días" },
+    { value: "30", label: "Últimos 30 días" },
+    { value: "month", label: "Este mes" },
+    { value: "year", label: "Este año" },
+    { value: "all", label: "Todo" },
+  ];
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
   return (
-    <label className="period">
-      <CalendarDays />
-      <select value={value} onChange={(e) => set(e.target.value as Period)}>
-        <option value="today">Hoy</option>
-        <option value="7">Últimos 7 días</option>
-        <option value="30">Últimos 30 días</option>
-        <option value="month">Este mes</option>
-        <option value="year">Este año</option>
-        <option value="all">Todo</option>
-      </select>
-      <ChevronDown />
-    </label>
+    <div className="period" ref={root}>
+      <button
+        type="button"
+        className="period-trigger"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+      >
+        <CalendarDays />
+        <span>{options.find((item) => item.value === value)?.label}</span>
+        <ChevronDown className={open ? "open" : ""} />
+      </button>
+      {open && (
+        <div className="period-menu">
+          {options.map((item) => (
+            <button
+              type="button"
+              key={item.value}
+              className={item.value === value ? "selected" : ""}
+              onClick={() => {
+                set(item.value);
+                setOpen(false);
+              }}
+            >
+              {item.label}
+              {item.value === value && <Check />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 function totals(sales: Sale[], expenses: Expense[]) {
