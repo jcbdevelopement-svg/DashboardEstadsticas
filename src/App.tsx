@@ -1067,7 +1067,11 @@ function SaleModal({
   const [lines, setLines] = useState([
       { product_id: products[0]?.id || "", quantity: 1 },
     ]),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [productSearch, setProductSearch] = useState(""),
+    [productCategory, setProductCategory] = useState("all");
+  const categories = [...new Set(products.map((p) => p.category || "Sin categoría"))].sort((a, b) => a.localeCompare(b, "es"));
+  const visibleProducts = products.filter((p) => (productCategory === "all" || p.category === productCategory) && (p.name + " " + p.category).toLowerCase().includes(productSearch.trim().toLowerCase()));
   const total = lines.reduce((a, l) => {
     const p = products.find((x) => x.id === l.product_id);
     return a + (p?.sale_price || 0) * l.quantity;
@@ -1097,8 +1101,13 @@ function SaleModal({
           <Empty text="Primero tenés que crear un producto." />
         ) : (
           <>
+            <div className="sale-product-filters">
+              <label><span><Search /> Buscar producto</span><input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Escribí nombre o categoría..." /></label>
+              <label>Categoría<select value={productCategory} onChange={(e) => setProductCategory(e.target.value)}><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+            </div>
+            <div className="sale-results">{visibleProducts.length} productos encontrados</div>
             {lines.map((l, i) => (
-              <div className="sale-line">
+              <div className="sale-line" key={i}>
                 <label>
                   Producto
                   <select
@@ -1111,9 +1120,8 @@ function SaleModal({
                       )
                     }
                   >
-                    {products.map((p) => (
-                      <option value={p.id}>{p.name}</option>
-                    ))}
+                    {!visibleProducts.some((p) => p.id === l.product_id) && products.filter((p) => p.id === l.product_id).map((p) => <option key={p.id} value={p.id}>{p.name} - {ars.format(p.sale_price)}</option>)}
+                    {categories.map((category) => { const options = visibleProducts.filter((p) => (p.category || "Sin categoría") === category); return options.length ? <optgroup key={category} label={category}>{options.map((p) => <option key={p.id} value={p.id}>{p.name} - {ars.format(p.sale_price)}</option>)}</optgroup> : null; })}
                   </select>
                 </label>
                 <label>
@@ -1144,10 +1152,11 @@ function SaleModal({
             <button
               type="button"
               className="row-action"
+              disabled={!visibleProducts.length}
               onClick={() =>
                 setLines([
                   ...lines,
-                  { product_id: products[0].id, quantity: 1 },
+                  { product_id: visibleProducts[0].id, quantity: 1 },
                 ])
               }
             >
@@ -1165,6 +1174,9 @@ function SaleModal({
             </div>
             <Field name="notes" label="Notas" />
             <div className="calculation">
+              <span>
+                Productos<b>{lines.reduce((sum, line) => sum + line.quantity, 0)}</b>
+              </span>
               <span>
                 Total de venta<b>{ars.format(total)}</b>
               </span>
