@@ -313,7 +313,7 @@ function Content({
   if (page === "Dashboard")
     return <Dashboard sales={sales} expenses={expenses} />;
   if (page === "Ventas")
-    return <SalesPage sales={sales} open={() => modal({ kind: "sale" })} />;
+    return <SalesPage sales={sales} open={(sale) => modal({ kind: "sale", item: sale })} />;
   if (page === "Productos")
     return (
       <ProductsPage
@@ -580,7 +580,7 @@ function GroupSummary({ count, groups, collapsed, setCollapsed, label }: { count
 function CollapsibleGroup({ title, count, noun, collapsed, toggle, children }: { title: string; count: number; noun: string; collapsed: boolean; toggle: () => void; children: any }) {
   return <section className="panel table-panel product-category"><button className="category-bar" onClick={toggle} aria-expanded={!collapsed}><span><b>{title}</b><small>{count} {count === 1 ? noun.replace(/s$/, "") : noun}</small></span><ChevronDown className={collapsed ? "" : "open"} /></button>{!collapsed && children}</section>;
 }
-function SalesPage({ sales, open }: { sales: Sale[]; open: () => void }) {
+function SalesPage({ sales, open }: { sales: Sale[]; open: (sale?: Sale) => void }) {
   const [q, setQ] = useState(""), [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const list = sales.filter((s) =>
     (s.payment_method + s.status + (s.notes || "") + (s.sale_items?.map((i) => i.products?.name).join(" ") || "")).toLowerCase().includes(q.toLowerCase()),
@@ -589,13 +589,13 @@ function SalesPage({ sales, open }: { sales: Sale[]; open: () => void }) {
   const toggle = (key: string) => setCollapsed((current) => { const next = new Set(current); next.has(key) ? next.delete(key) : next.add(key); return next; });
   return (
     <>
-      <Toolbar q={q} setQ={setQ} button="Nueva venta" action={open} />
+      <Toolbar q={q} setQ={setQ} button="Nueva venta" action={() => open()} />
       <GroupSummary count={list.length} groups={groups.map(([key]) => key)} collapsed={collapsed} setCollapsed={setCollapsed} label="ventas" />
-      {list.length ? groups.map(([key, group]) => <CollapsibleGroup key={key} title={key} count={group.length} noun="ventas" collapsed={!q && collapsed.has(key)} toggle={() => toggle(key)}><SalesRows sales={group} /></CollapsibleGroup>) : <section className="panel"><Empty text="No hay ventas para mostrar." /></section>}
+      {list.length ? groups.map(([key, group]) => <CollapsibleGroup key={key} title={key} count={group.length} noun="ventas" collapsed={!q && collapsed.has(key)} toggle={() => toggle(key)}><SalesRows sales={group} open={open} /></CollapsibleGroup>) : <section className="panel"><Empty text="No hay ventas para mostrar." /></section>}
     </>
   );
 }
-function SalesRows({ sales }: { sales: Sale[] }) { return <div className="table-wrap"><table><thead><tr><th>FECHA</th><th>PRODUCTOS</th><th>TOTAL</th><th>COSTO</th><th>GANANCIA</th><th>MÉTODO</th><th>ESTADO</th></tr></thead><tbody>{sales.map((s) => <tr key={s.id}><td>{date(s.sold_at)}</td><td><b>{s.sale_items?.map((i) => i.products?.name).join(", ") || "Venta"}</b></td><td>{ars.format(s.total)}</td><td>{ars.format(s.total_cost)}</td><td className="profit">{ars.format(s.profit)}</td><td>{s.payment_method}</td><td><Status value={s.status} /></td></tr>)}</tbody></table></div>; }
+function SalesRows({ sales, open }: { sales: Sale[]; open?: (sale: Sale) => void }) { return <div className="table-wrap"><table><thead><tr><th>FECHA</th><th>PRODUCTOS</th><th>TOTAL</th><th>COSTO</th><th>GANANCIA</th><th>MÉTODO</th><th>ESTADO</th>{open && <th>ACCIONES</th>}</tr></thead><tbody>{sales.map((s) => <tr key={s.id}><td>{date(s.sold_at)}</td><td><b>{s.sale_items?.map((i) => i.products?.name).join(", ") || "Venta"}</b></td><td>{ars.format(s.total)}</td><td>{ars.format(s.total_cost)}</td><td className="profit">{ars.format(s.profit)}</td><td>{s.payment_method}</td><td><Status value={s.status} /></td>{open && <td><button className="row-action" onClick={() => open(s)}>Editar</button></td>}</tr>)}</tbody></table></div>; }
 function SalesTable({ sales, title }: { sales: Sale[]; title: string }) {
   return (
     <section className="panel table-panel">
@@ -900,7 +900,7 @@ function DataModal({
   done: (s: string) => void;
 }) {
   if (modal.kind === "sale")
-    return <SaleModal products={products} close={close} done={done} />;
+    return <SaleModal products={products} item={modal.item} close={close} done={done} />;
   const item = modal.item || {},
     isProduct = modal.kind === "product",
     isExpense = modal.kind === "expense";
@@ -1058,10 +1058,12 @@ function DataModal({
 }
 function SaleModal({
   products,
+  item,
   close,
   done,
 }: {
   products: Product[];
+  item?: Sale;
   close: () => void;
   done: (s: string) => void;
 }) {
@@ -1080,7 +1082,12 @@ function SaleModal({
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
-    const f = new FormData(e.currentTarget),
+    const f = new FormData(e.currentTarget);
+    if (item) {
+      const { error } = await supabase.from("sales").update({ payment_method: f.get("method"), status: f.get("status"), notes: f.get("notes") || null, sold_at: new Date(String(f.get("date")) + "T12:00:00-03:00").toISOString() }).eq("id", item.id);
+      setBusy(false); if (error) alert(error.message); else done("Venta actualizada correctamente"); return;
+    }
+    const
       { error } = await supabase.rpc("create_sale", {
         p_items: lines,
         p_payment_method: f.get("method"),
@@ -1097,8 +1104,9 @@ function SaleModal({
   return (
     <div className="backdrop">
       <form className="modal" onSubmit={submit}>
-        <ModalHead title="Nueva venta" close={close} />
-        {!products.length ? (
+        <ModalHead title={item ? "Editar venta" : "Nueva venta"} close={close} />
+        {item ? <><div className="sale-edit-summary"><span>Productos<b>{item.sale_items?.map((i) => `${i.quantity}x ${i.products?.name}`).join(", ") || "Venta"}</b></span><span>Total<b>{ars.format(item.total)}</b></span></div><div className="form-grid"><Select name="method" label="Método" options={methods} value={item.payment_method} /><Select name="status" label="Estado" options={["completed", "pending", "cancelled"]} value={item.status} /><Field name="date" label="Fecha" type="date" value={item.sold_at.slice(0, 10)} /></div><Field name="notes" label="Notas" value={item.notes} /><Actions close={close} busy={busy} /></> :
+        !products.length ? (
           <Empty text="Primero tenés que crear un producto." />
         ) : (
           <>
