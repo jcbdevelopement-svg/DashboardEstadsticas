@@ -55,7 +55,7 @@ type Modal = {
   kind: "sale" | "product" | "expense" | "payment";
   item?: any;
 } | null;
-type Period = "today" | "7" | "30" | "month" | "year" | "all";
+type Period = "today" | "7" | "15" | "30";
 const nav = [
   ["Dashboard", LayoutDashboard],
   ["Ventas", ShoppingBag],
@@ -79,17 +79,16 @@ function since(p: Period) {
     d = new Date(n);
   if (p === "today") d.setHours(0, 0, 0, 0);
   if (p === "7") d.setDate(n.getDate() - 6);
+  if (p === "15") d.setDate(n.getDate() - 14);
   if (p === "30") d.setDate(n.getDate() - 29);
-  if (p === "month") d.setDate(1);
-  if (p === "year") d.setMonth(0, 1);
-  return p === "all" ? null : d;
+  return d;
 }
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(),
     [page, setPage] = useState<Page>("Dashboard"),
     [menu, setMenu] = useState(false),
     [modal, setModal] = useState<Modal>(null),
-    [period, setPeriod] = useState<Period>("month"),
+    [period, setPeriod] = useState<Period>("30"),
     [toast, setToast] = useState("");
   const data = useFinancialData();
   useEffect(() => {
@@ -319,10 +318,8 @@ function PeriodSelect({
   const options: Array<{ value: Period; label: string }> = [
     { value: "today", label: "Hoy" },
     { value: "7", label: "Últimos 7 días" },
+    { value: "15", label: "Últimos 15 días" },
     { value: "30", label: "Últimos 30 días" },
-    { value: "month", label: "Este mes" },
-    { value: "year", label: "Este año" },
-    { value: "all", label: "Todo" },
   ];
   useEffect(() => {
     const close = (event: MouseEvent) => {
