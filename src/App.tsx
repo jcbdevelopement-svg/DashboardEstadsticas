@@ -74,6 +74,20 @@ const date = (v: string) =>
   new Intl.DateTimeFormat("es-AR", {
     timeZone: "America/Argentina/Buenos_Aires",
   }).format(new Date(v.length === 10 ? v + "T12:00:00-03:00" : v));
+let brandMarkPromise: Promise<string> | null = null;
+function loadBrandMark() {
+  brandMarkPromise ||= fetch("/brand/jb-mark.png").then((response) => response.blob()).then((blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob);
+  }));
+  return brandMarkPromise;
+}
+function addPdfBranding(doc: any, mark: string) {
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page); doc.setGState(new doc.GState({ opacity: 0.09 })); doc.addImage(mark, "PNG", 65, 102, 80, 80, "jb-watermark", "FAST"); doc.setGState(new doc.GState({ opacity: 1 }));
+    doc.addImage(mark, "PNG", 181, 7, 15, 15, "jb-header", "FAST");
+  }
+}
 function since(p: Period) {
   const n = new Date(),
     d = new Date(n);
@@ -244,7 +258,7 @@ function MonthlyRetentionAlert({ sales, expenses, payments, reload, notify }: {
     setWorking(true);
     const oldSales = sales.filter((x) => inMonth(x.sold_at)), oldExpenses = expenses.filter((x) => inMonth(x.expense_date)), oldPayments = payments.filter((x) => inMonth(x.payment_date));
     try {
-      const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+      const [{ jsPDF }, { default: autoTable }, brandMark] = await Promise.all([import("jspdf"), import("jspdf-autotable"), loadBrandMark()]);
       const doc = new jsPDF({ unit: "mm", format: "a4" });
       doc.setProperties({ title: `Respaldo ${monthLabel}`, subject: "Respaldo financiero mensual", author: "JCB Developement" });
       doc.setFillColor(116, 35, 204); doc.rect(0, 0, 210, 34, "F");
@@ -264,6 +278,7 @@ function MonthlyRetentionAlert({ sales, expenses, payments, reload, notify }: {
       addTable("Gastos", ["Fecha", "Nombre", "Categoría", "Monto"], oldExpenses.map((x) => [date(x.expense_date), x.name, x.category, ars.format(Number(x.amount))]));
       addTable("Pagos", ["Fecha", "Concepto", "Método", "Estado", "Monto"], oldPayments.map((x) => [date(x.payment_date), x.concept, x.payment_method, x.status, ars.format(Number(x.amount))]));
       const pages = doc.getNumberOfPages();
+      addPdfBranding(doc, brandMark);
       for (let page = 1; page <= pages; page++) { doc.setPage(page); doc.setFontSize(7); doc.setTextColor(130); doc.text(`JCB Developement - Página ${page} de ${pages}`, 105, 291, { align: "center" }); }
       doc.save(`respaldo-${monthKey.slice(0, 7)}.pdf`);
     } catch (error) {
@@ -864,17 +879,18 @@ function Reports({
       ["Ganancia neta", t.net],
       ["Margen", t.margin],
     ];
-  function exportFile(kind: "csv" | "xls") {
-    const sep = kind === "csv" ? "," : "\t",
-      blob = new Blob([rows.map((r) => r.join(sep)).join("\n")], {
-        type: "text/plain",
-      }),
-      a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "reporte-financiero." + kind;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    notify("Reporte exportado");
+  async function exportPdf() {
+    try {
+      const [{ jsPDF }, { default: autoTable }, brandMark] = await Promise.all([import("jspdf"), import("jspdf-autotable"), loadBrandMark()]);
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      doc.setProperties({ title: "Reporte financiero", author: "JCB Developement" });
+      doc.setFillColor(116, 35, 204); doc.rect(0, 0, 210, 36, "F");
+      doc.setTextColor(255); doc.setFontSize(20); doc.text("Reporte financiero", 14, 17); doc.setFontSize(9); doc.text(`Generado el ${date(new Date().toISOString())}`, 14, 25);
+      autoTable(doc, { startY: 48, head: [["Indicador", "Resultado"]], body: rows.map(([name, value]) => [String(name), name === "Margen" ? `${Number(value).toFixed(1)}%` : ars.format(Number(value))]), theme: "grid", styles: { fontSize: 10, cellPadding: 5 }, headStyles: { fillColor: [116, 35, 204] }, alternateRowStyles: { fillColor: [248, 245, 252] } });
+      addPdfBranding(doc, brandMark);
+      doc.setFontSize(7); doc.setTextColor(120); doc.text("JCB Developement - Documento de marca", 105, 291, { align: "center" });
+      doc.save("reporte-financiero-jb.pdf"); notify("Reporte PDF exportado con marca de agua.");
+    } catch (error) { notify(`No se pudo crear el PDF: ${error instanceof Error ? error.message : "error desconocido"}`); }
   }
   return (
     <>
@@ -885,17 +901,9 @@ function Reports({
           <p>Información obtenida directamente de Supabase.</p>
         </div>
         <div className="export">
-          <button onClick={() => exportFile("csv")}>
+          <button className="primary" onClick={exportPdf}>
             <Download />
-            CSV
-          </button>
-          <button onClick={() => exportFile("xls")}>
-            <Download />
-            Excel
-          </button>
-          <button className="primary" onClick={() => window.print()}>
-            <Download />
-            PDF
+            Descargar PDF con marca JB
           </button>
         </div>
       </section>
