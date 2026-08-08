@@ -1264,32 +1264,43 @@ function SaleModal({
   close: () => void;
   done: (s: string) => void;
 }) {
-  const [lines, setLines] = useState([
-      { product_id: products[0]?.id || "", quantity: 1 },
+  const priceFor = (product: Product | undefined, quantity: number) => product ? [...(product.tier_prices || [])].sort((a, b) => b.minQty - a.minQty).find((tier) => quantity >= tier.minQty && (!tier.maxQty || quantity <= tier.maxQty))?.unitPrice ?? product.sale_price : 0;
+  const [lines, setLines] = useState<Array<{ product_id: string; quantity: number; unit_price?: number }>>([
+      { product_id: products[0]?.id || "", quantity: 1, unit_price: products[0] ? priceFor(products[0], 1) : 0 },
     ]),
     [busy, setBusy] = useState(false),
     [productSearch, setProductSearch] = useState(""),
     [productCategory, setProductCategory] = useState("all");
   const categories = [...new Set(products.map((p) => p.category || "Sin categoría"))].sort((a, b) => a.localeCompare(b, "es"));
   const visibleProducts = products.filter((p) => (productCategory === "all" || p.category === productCategory) && (p.name + " " + p.category).toLowerCase().includes(productSearch.trim().toLowerCase()));
-  const priceFor = (product: Product | undefined, quantity: number) => product ? [...(product.tier_prices || [])].sort((a, b) => b.minQty - a.minQty).find((tier) => quantity >= tier.minQty && (!tier.maxQty || quantity <= tier.maxQty))?.unitPrice ?? product.sale_price : 0;
+
   const total = lines.reduce((a, l) => {
     const p = products.find((x) => x.id === l.product_id);
-    return a + priceFor(p, l.quantity) * l.quantity;
+    const unitPrice = l.unit_price !== undefined && !isNaN(l.unit_price) ? l.unit_price : priceFor(p, l.quantity);
+    return a + unitPrice * l.quantity;
   }, 0);
+
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     const f = new FormData(e.currentTarget);
     if (item) {
-      const { error } = await supabase.from("sales").update({ payment_method: f.get("method"), status: f.get("status"), notes: f.get("notes") || null, sold_at: new Date(String(f.get("date")) + "T12:00:00-03:00").toISOString() }).eq("id", item.id);
+      const { error } = await supabase.from("sales").update({ payment_method: f.get("method"), status: f.get("status") || item.status || "completed", notes: f.get("notes") || null, sold_at: new Date(String(f.get("date")) + "T12:00:00-03:00").toISOString() }).eq("id", item.id);
       setBusy(false); if (error) alert(error.message); else done("Venta actualizada correctamente"); return;
     }
+    const preparedItems = lines.map((l) => {
+      const p = products.find((x) => x.id === l.product_id);
+      return {
+        product_id: l.product_id,
+        quantity: l.quantity,
+        unit_price: l.unit_price !== undefined && !isNaN(l.unit_price) ? l.unit_price : priceFor(p, l.quantity),
+      };
+    });
     const
       { error } = await supabase.rpc("create_sale", {
-        p_items: lines,
+        p_items: preparedItems,
         p_payment_method: f.get("method"),
-        p_status: f.get("status"),
+        p_status: "completed",
         p_notes: f.get("notes") || null,
         p_sold_at: new Date(
           String(f.get("date")) + "T12:00:00-03:00",
@@ -1313,73 +1324,96 @@ function SaleModal({
               <label>Categoría<select value={productCategory} onChange={(e) => setProductCategory(e.target.value)}><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
             </div>
             <div className="sale-results">{visibleProducts.length} productos encontrados</div>
-            {lines.map((l, i) => (
-              <div className="sale-line" key={i}>
-                <label>
-                  Producto
-                  <select
-                    value={l.product_id}
-                    onChange={(e) =>
-                      setLines(
-                        lines.map((x, j) =>
-                          j === i ? { ...x, product_id: e.target.value } : x,
-                        ),
-                      )
-                    }
-                  >
-                    {!visibleProducts.some((p) => p.id === l.product_id) && products.filter((p) => p.id === l.product_id).map((p) => <option key={p.id} value={p.id}>{p.name} - {ars.format(p.sale_price)}</option>)}
-                    {categories.map((category) => { const options = visibleProducts.filter((p) => (p.category || "Sin categoría") === category); return options.length ? <optgroup key={category} label={category}>{options.map((p) => <option key={p.id} value={p.id}>{p.name} - {ars.format(p.sale_price)}</option>)}</optgroup> : null; })}
-                  </select>
-                </label>
-                <label>
-                  Cantidad
-                  <input
-                    type="number"
-                    min="1"
-                    value={l.quantity}
-                    onChange={(e) =>
-                      setLines(
-                        lines.map((x, j) =>
-                          j === i ? { ...x, quantity: +e.target.value } : x,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-                {lines.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setLines(lines.filter((_, j) => j !== i))}
-                  >
-                    <X />
-                  </button>
-                )}
-              </div>
-            ))}
+            {lines.map((l, i) => {
+              const selectedProduct = products.find((p) => p.id === l.product_id);
+              const currentUnitPrice = l.unit_price !== undefined ? l.unit_price : priceFor(selectedProduct, l.quantity);
+              return (
+                <div className="sale-line" key={i}>
+                  <label>
+                    Producto
+                    <select
+                      value={l.product_id}
+                      onChange={(e) => {
+                        const newId = e.target.value;
+                        const p = products.find((x) => x.id === newId);
+                        const newPrice = p ? priceFor(p, l.quantity) : 0;
+                        setLines(
+                          lines.map((x, j) =>
+                            j === i ? { ...x, product_id: newId, unit_price: newPrice } : x,
+                          ),
+                        );
+                      }}
+                    >
+                      {!visibleProducts.some((p) => p.id === l.product_id) && products.filter((p) => p.id === l.product_id).map((p) => <option key={p.id} value={p.id}>{p.name} - {ars.format(p.sale_price)}</option>)}
+                      {categories.map((category) => { const options = visibleProducts.filter((p) => (p.category || "Sin categoría") === category); return options.length ? <optgroup key={category} label={category}>{options.map((p) => <option key={p.id} value={p.id}>{p.name} - {ars.format(p.sale_price)}</option>)}</optgroup> : null; })}
+                    </select>
+                  </label>
+                  <label>
+                    Cantidad
+                    <input
+                      type="number"
+                      min="1"
+                      value={l.quantity}
+                      onChange={(e) => {
+                        const newQty = Math.max(1, +e.target.value);
+                        const p = products.find((x) => x.id === l.product_id);
+                        const autoPrice = p ? priceFor(p, newQty) : currentUnitPrice;
+                        setLines(
+                          lines.map((x, j) =>
+                            j === i ? { ...x, quantity: newQty, unit_price: autoPrice } : x,
+                          ),
+                        );
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Precio c/u
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={currentUnitPrice}
+                      onChange={(e) => {
+                        const customVal = +e.target.value;
+                        setLines(
+                          lines.map((x, j) =>
+                            j === i ? { ...x, unit_price: customVal } : x,
+                          ),
+                        );
+                      }}
+                    />
+                  </label>
+                  {lines.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setLines(lines.filter((_, j) => j !== i))}
+                    >
+                      <X />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             <button
               type="button"
               className="row-action"
               disabled={!visibleProducts.length}
-              onClick={() =>
+              onClick={() => {
+                const firstP = visibleProducts[0];
                 setLines([
                   ...lines,
-                  { product_id: visibleProducts[0].id, quantity: 1 },
-                ])
-              }
+                  { product_id: firstP.id, quantity: 1, unit_price: firstP ? priceFor(firstP, 1) : 0 },
+                ]);
+              }}
             >
               <Plus />
               Agregar producto
             </button>
             <div className="form-grid">
-              <Select name="method" label="Método" options={methods} />
-              <Select
-                name="status"
-                label="Estado"
-                options={["completed", "pending", "cancelled"]}
-              />
+              <Select name="method" label="Método de pago" options={methods} />
               <Field name="date" label="Fecha" type="date" value={today()} />
             </div>
-            <Field name="notes" label="Notas" />
+            <Field name="notes" label="Notas (opcional)" />
             <div className="calculation">
               <span>
                 Productos<b>{lines.reduce((sum, line) => sum + line.quantity, 0)}</b>
