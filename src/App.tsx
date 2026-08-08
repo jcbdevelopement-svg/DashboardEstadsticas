@@ -421,6 +421,36 @@ function SettingsPage({ session, notify }: { session: Session; notify: (message:
       <div className="setting-info"><b>Siempre conservados</b><span>Productos y cuenta de usuario.</span></div>
     </section>
     <section className="panel settings-card categories-card">
+      <div className="panel-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+        <div>
+          <h2 style={{ fontSize: "16px", color: "var(--brand)" }}>Dashboard General</h2>
+          <p style={{ margin: "4px 0 0", maxWidth: "520px" }}>
+            Una solución práctica para administrar y controlar tu negocio desde un solo lugar, ahorrar tiempo, mantener las cuentas ordenadas y tomar mejores decisiones.
+          </p>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", background: "color-mix(in srgb,var(--brand) 8%,white)", padding: "10px 14px", borderRadius: "10px", border: "1px solid color-mix(in srgb,var(--brand) 18%,white)" }}>
+          <span style={{ fontSize: "10px", color: "#6b7280" }}>DESDE <b style={{ fontSize: "15px", color: "var(--brand)" }}>$80.000 ARS</b></span>
+          <span style={{ fontSize: "9px", color: "#6b7280" }}>O PLAN MENSUAL <b style={{ fontSize: "11px", color: "#374151" }}>$28.000 ARS / MES</b></span>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "10px", marginTop: "14px" }}>
+        {[
+          "1 Tienda y 3 Usuarios",
+          "Catálogo, Productos, Categorías directos desde tu página",
+          "Gastos, Ventas, Pagos, Estadísticas y Reportes Mensuales",
+          "Precios especiales",
+          "Color principal del sistema a elección",
+          "Información protegida y respaldada en la nube",
+          "Identidad visual de JB incluida",
+        ].map((feature, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11px", color: "#374151", background: "#f9fafb", padding: "9px 12px", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
+            <Check style={{ width: "14px", height: "14px", color: "var(--brand)", flexShrink: 0 }} />
+            <span>{feature}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+    <section className="panel settings-card categories-card">
       <div className="panel-head"><div><h2>Categorías de gastos</h2><p>Categorías disponibles al registrar gastos.</p></div></div>
       <div className="settings-categories">{expenseCategoryLabels.map((item) => <span key={item}>{item}</span>)}</div>
     </section>
