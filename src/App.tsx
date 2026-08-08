@@ -112,11 +112,36 @@ export default function App() {
     document.documentElement.style.setProperty("--brand", color);
   }, []);
   useEffect(() => {
-    supabase.auth.getSession().then((x) => setSession(x.data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => data.subscription.unsubscribe();
+    let mounted = true;
+    const timer = setTimeout(() => {
+      if (mounted) setSession((s) => (s === undefined ? null : s));
+    }, 1500);
+
+    supabase.auth
+      .getSession()
+      .then((x) => {
+        if (mounted) setSession(x?.data?.session ?? null);
+      })
+      .catch(() => {
+        if (mounted) setSession(null);
+      });
+
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => {
+      if (mounted) setSession(s);
+    });
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+      data?.subscription?.unsubscribe();
+    };
   }, []);
-  if (session === undefined) return <div className="auth-page" />;
+  if (session === undefined)
+    return (
+      <div className="auth-custom-wrapper flex items-center justify-center text-white">
+        <Loader2 className="w-8 h-8 spin" />
+      </div>
+    );
   if (!session) return <Auth />;
   const notify = (m: string) => {
     setToast(m);
