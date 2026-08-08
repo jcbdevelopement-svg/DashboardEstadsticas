@@ -1170,15 +1170,17 @@ function DataModal({
     e.preventDefault();
     const f = new FormData(e.currentTarget),
       payload: any = { user_id: userId };
-    if (isProduct)
+    if (isProduct) {
+      const saleVal = f.get("sale_price");
+      const costVal = f.get("cost_price");
       Object.assign(payload, {
         name: f.get("name"),
-        category: f.get("category"),
-        sale_price: +String(f.get("sale_price")),
-        cost_price: +String(f.get("cost_price")),
+        category: f.get("category") || "General",
+        sale_price: saleVal !== null && saleVal !== "" ? +String(saleVal) : 0,
+        cost_price: costVal !== null && costVal !== "" ? +String(costVal) : 0,
         tier_prices: tiers.filter((tier) => tier.minQty > 0 && tier.unitPrice >= 0),
       });
-    else if (isExpense)
+    } else if (isExpense)
       Object.assign(payload, {
         name: f.get("name"),
         category: f.get("category"),
@@ -1217,18 +1219,18 @@ function DataModal({
           <>
             <Field name="name" label="Nombre" value={item.name} />
             <div className="form-grid">
-              <Field name="category" label="Categoría" value={item.category} />
+              <Field name="category" label="Categoría (opcional)" value={item.category} />
               <Field
                 name="sale_price"
-                label="Precio de venta"
+                label="Precio de venta (opcional)"
                 type="number"
-                value={item.sale_price ?? 0}
+                value={item.sale_price !== undefined && item.sale_price !== null ? item.sale_price : ""}
               />
               <Field
                 name="cost_price"
-                label="Costo"
+                label="Costo (opcional)"
                 type="number"
-                value={item.cost_price ?? 0}
+                value={item.cost_price !== undefined && item.cost_price !== null ? item.cost_price : ""}
               />
             </div>
             <div className="tier-editor"><div className="tier-editor-head"><span><b>Precios por cantidad</b><small>Opcional: reemplazan el precio normal según las unidades.</small></span><button type="button" onClick={() => setTiers([...tiers, { minQty: 1, unitPrice: Number(item.sale_price) || 0 }])}><Plus />Agregar</button></div>{tiers.map((tier, index) => <div className="tier-row" key={index}><label>Desde<input type="number" min="1" value={tier.minQty} onChange={(e) => setTiers(tiers.map((x, i) => i === index ? { ...x, minQty: +e.target.value } : x))} /></label><label>Hasta<input type="number" min={tier.minQty} placeholder="Sin límite" value={tier.maxQty ?? ""} onChange={(e) => setTiers(tiers.map((x, i) => i === index ? { ...x, maxQty: e.target.value ? +e.target.value : undefined } : x))} /></label><label>Precio c/u<input type="number" min="0" step="0.01" value={tier.unitPrice} onChange={(e) => setTiers(tiers.map((x, i) => i === index ? { ...x, unitPrice: +e.target.value } : x))} /></label><button type="button" className="tier-delete" onClick={() => setTiers(tiers.filter((_, i) => i !== index))}><Trash2 /></button></div>)}</div>
@@ -1748,7 +1750,7 @@ function Field({
     <label>
       {label}
       <input
-        required={name !== "description" && name !== "notes"}
+        required={name !== "description" && name !== "notes" && name !== "sale_price" && name !== "cost_price" && name !== "category"}
         name={name}
         type={type}
         min={type === "number" ? 0 : undefined}
