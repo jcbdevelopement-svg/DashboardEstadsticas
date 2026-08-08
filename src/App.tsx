@@ -1260,19 +1260,39 @@ function SaleModal({
   done,
 }: {
   products: Product[];
-  item?: Sale;
+  item?: any;
   close: () => void;
   done: (s: string) => void;
 }) {
-  const priceFor = (product: Product | undefined, quantity: number) => product ? [...(product.tier_prices || [])].sort((a, b) => b.minQty - a.minQty).find((tier) => quantity >= tier.minQty && (!tier.maxQty || quantity <= tier.maxQty))?.unitPrice ?? product.sale_price : 0;
+  const priceFor = (product: Product | undefined, quantity: number) =>
+    product
+      ? [...(product.tier_prices || [])]
+          .sort((a, b) => b.minQty - a.minQty)
+          .find((tier) => quantity >= tier.minQty && (!tier.maxQty || quantity <= tier.maxQty))
+          ?.unitPrice ?? product.sale_price
+      : 0;
+
   const [lines, setLines] = useState<Array<{ product_id: string; quantity: number; unit_price?: number }>>([
-      { product_id: products[0]?.id || "", quantity: 1, unit_price: products[0] ? priceFor(products[0], 1) : 0 },
-    ]),
-    [busy, setBusy] = useState(false),
-    [productSearch, setProductSearch] = useState(""),
-    [productCategory, setProductCategory] = useState("all");
+    { product_id: products[0]?.id || "", quantity: 1, unit_price: products[0] ? priceFor(products[0], 1) : 0 },
+  ]);
+  const [busy, setBusy] = useState(false);
+
+  // Combobox Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const categories = [...new Set(products.map((p) => p.category || "Sin categoría"))].sort((a, b) => a.localeCompare(b, "es"));
-  const visibleProducts = products.filter((p) => (productCategory === "all" || p.category === productCategory) && (p.name + " " + p.category).toLowerCase().includes(productSearch.trim().toLowerCase()));
+
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return products.filter((p) => {
+      const matchCat = selectedCategory === "all" || (p.category || "Sin categoría") === selectedCategory;
+      const matchText = !q || (p.name + " " + (p.category || "")).toLowerCase().includes(q);
+      return matchCat && matchText;
+    });
+  }, [products, searchQuery, selectedCategory]);
 
   const total = lines.reduce((a, l) => {
     const p = products.find((x) => x.id === l.product_id);
@@ -1280,15 +1300,54 @@ function SaleModal({
     return a + unitPrice * l.quantity;
   }, 0);
 
+  const addProductToSale = (product: Product) => {
+    const initialPrice = priceFor(product, 1);
+    setLines((prev) => {
+      if (prev.length === 1 && !prev[0].product_id) {
+        return [{ product_id: product.id, quantity: 1, unit_price: initialPrice }];
+      }
+      const existingIdx = prev.findIndex((l) => l.product_id === product.id);
+      if (existingIdx >= 0) {
+        return prev.map((l, i) =>
+          i === existingIdx
+            ? { ...l, quantity: l.quantity + 1, unit_price: priceFor(product, l.quantity + 1) }
+            : l
+        );
+      }
+      return [...prev, { product_id: product.id, quantity: 1, unit_price: initialPrice }];
+    });
+    setSearchQuery("");
+    setIsDropdownOpen(false);
+  };
+
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     const f = new FormData(e.currentTarget);
-    if (item) {
-      const { error } = await supabase.from("sales").update({ payment_method: f.get("method"), status: f.get("status") || item.status || "completed", notes: f.get("notes") || null, sold_at: new Date(String(f.get("date")) + "T12:00:00-03:00").toISOString() }).eq("id", item.id);
-      setBusy(false); if (error) alert(error.message); else done("Venta actualizada correctamente"); return;
+    const validLines = lines.filter((l) => l.product_id);
+    if (!validLines.length) {
+      alert("Por favor elegí al menos un producto.");
+      setBusy(false);
+      return;
     }
-    const preparedItems = lines.map((l) => {
+
+    if (item) {
+      const { error } = await supabase
+        .from("sales")
+        .update({
+          payment_method: f.get("method"),
+          status: f.get("status") || item.status || "completed",
+          notes: f.get("notes") || null,
+          sold_at: new Date(String(f.get("date")) + "T12:00:00-03:00").toISOString(),
+        })
+        .eq("id", item.id);
+      setBusy(false);
+      if (error) alert(error.message);
+      else done("Venta actualizada correctamente");
+      return;
+    }
+
+    const preparedItems = validLines.map((l) => {
       const p = products.find((x) => x.id === l.product_id);
       return {
         product_id: l.product_id,
@@ -1296,135 +1355,278 @@ function SaleModal({
         unit_price: l.unit_price !== undefined && !isNaN(l.unit_price) ? l.unit_price : priceFor(p, l.quantity),
       };
     });
-    const
-      { error } = await supabase.rpc("create_sale", {
-        p_items: preparedItems,
-        p_payment_method: f.get("method"),
-        p_status: "completed",
-        p_notes: f.get("notes") || null,
-        p_sold_at: new Date(
-          String(f.get("date")) + "T12:00:00-03:00",
-        ).toISOString(),
-      });
+
+    const { error } = await supabase.rpc("create_sale", {
+      p_items: preparedItems,
+      p_payment_method: f.get("method"),
+      p_status: f.get("status") || "completed",
+      p_notes: f.get("notes") || null,
+      p_sold_at: new Date(String(f.get("date")) + "T12:00:00-03:00").toISOString(),
+    });
+
     setBusy(false);
     if (error) alert(error.message);
     else done("Venta registrada correctamente");
   }
+
   return (
     <div className="backdrop">
-      <form className="modal" onSubmit={submit}>
-        <ModalHead title={item ? "Editar venta" : "Nueva venta"} close={close} />
-        {item ? <><div className="sale-edit-summary"><span>Productos<b>{item.sale_items?.map((i) => `${i.quantity}x ${i.products?.name}`).join(", ") || "Venta"}</b></span><span>Total<b>{ars.format(item.total)}</b></span></div><div className="form-grid"><Select name="method" label="Método" options={methods} value={item.payment_method} /><Select name="status" label="Estado" options={["completed", "pending", "cancelled"]} value={item.status} /><Field name="date" label="Fecha" type="date" value={item.sold_at.slice(0, 10)} /></div><Field name="notes" label="Notas" value={item.notes} /><Actions close={close} busy={busy} /></> :
-        !products.length ? (
-          <Empty text="Primero tenés que crear un producto." />
-        ) : (
-          <>
-            <div className="sale-product-filters">
-              <label><span><Search /> Buscar producto</span><input value={productSearch} onChange={(e) => setProductSearch(e.target.value)} placeholder="Escribí nombre o categoría..." /></label>
-              <label>Categoría<select value={productCategory} onChange={(e) => setProductCategory(e.target.value)}><option value="all">Todas las categorías</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+      <form className="sale-modal-clean" onSubmit={submit}>
+        {/* Header */}
+        <div className="sale-modal-header">
+          <h2>{item ? "Editar venta" : "Nueva venta"}</h2>
+          <button type="button" className="sale-modal-close" onClick={close} title="Cerrar">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="sale-modal-body">
+          {item ? (
+            <div className="sale-edit-summary">
+              <span>
+                Productos<b>{item.sale_items?.map((i: any) => `${i.quantity}x ${i.products?.name}`).join(", ") || "Venta"}</b>
+              </span>
+              <span>
+                Total<b>{ars.format(item.total)}</b>
+              </span>
             </div>
-            <div className="sale-results">{visibleProducts.length} productos encontrados</div>
-            {lines.map((l, i) => {
-              const selectedProduct = products.find((p) => p.id === l.product_id);
-              const currentUnitPrice = l.unit_price !== undefined ? l.unit_price : priceFor(selectedProduct, l.quantity);
-              return (
-                <div className="sale-line" key={i}>
-                  <label>
-                    Producto
+          ) : !products.length ? (
+            <Empty text="Primero tenés que crear un producto para registrar ventas." />
+          ) : (
+            <>
+              {/* Product Combobox Search */}
+              <div className="sale-search-box">
+                <div className="sale-search-label-row">
+                  <span className="sale-search-label">Producto</span>
+                  {categories.length > 1 && (
                     <select
-                      value={l.product_id}
-                      onChange={(e) => {
-                        const newId = e.target.value;
-                        const p = products.find((x) => x.id === newId);
-                        const newPrice = p ? priceFor(p, l.quantity) : 0;
-                        setLines(
-                          lines.map((x, j) =>
-                            j === i ? { ...x, product_id: newId, unit_price: newPrice } : x,
-                          ),
-                        );
-                      }}
+                      className="sale-cat-filter-small"
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
                     >
-                      {!visibleProducts.some((p) => p.id === l.product_id) && products.filter((p) => p.id === l.product_id).map((p) => <option key={p.id} value={p.id}>{p.name} - {ars.format(p.sale_price)}</option>)}
-                      {categories.map((category) => { const options = visibleProducts.filter((p) => (p.category || "Sin categoría") === category); return options.length ? <optgroup key={category} label={category}>{options.map((p) => <option key={p.id} value={p.id}>{p.name} - {ars.format(p.sale_price)}</option>)}</optgroup> : null; })}
+                      <option value="all">Todas las categorías</option>
+                      {categories.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
                     </select>
-                  </label>
-                  <label>
-                    Cantidad
-                    <input
-                      type="number"
-                      min="1"
-                      value={l.quantity}
-                      onChange={(e) => {
-                        const newQty = Math.max(1, +e.target.value);
-                        const p = products.find((x) => x.id === l.product_id);
-                        const autoPrice = p ? priceFor(p, newQty) : currentUnitPrice;
-                        setLines(
-                          lines.map((x, j) =>
-                            j === i ? { ...x, quantity: newQty, unit_price: autoPrice } : x,
-                          ),
-                        );
-                      }}
-                    />
-                  </label>
-                  <label>
-                    Precio c/u
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={currentUnitPrice}
-                      onChange={(e) => {
-                        const customVal = +e.target.value;
-                        setLines(
-                          lines.map((x, j) =>
-                            j === i ? { ...x, unit_price: customVal } : x,
-                          ),
-                        );
-                      }}
-                    />
-                  </label>
-                  {lines.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setLines(lines.filter((_, j) => j !== i))}
-                    >
-                      <X />
-                    </button>
                   )}
                 </div>
-              );
-            })}
-            <button
-              type="button"
-              className="row-action"
-              disabled={!visibleProducts.length}
-              onClick={() => {
-                const firstP = visibleProducts[0];
-                setLines([
-                  ...lines,
-                  { product_id: firstP.id, quantity: 1, unit_price: firstP ? priceFor(firstP, 1) : 0 },
-                ]);
-              }}
-            >
-              <Plus />
-              Agregar producto
-            </button>
-            <div className="form-grid">
-              <Select name="method" label="Método de pago" options={methods} />
-              <Field name="date" label="Fecha" type="date" value={today()} />
-            </div>
-            <Field name="notes" label="Notas (opcional)" />
-            <div className="calculation">
-              <span>
-                Productos<b>{lines.reduce((sum, line) => sum + line.quantity, 0)}</b>
-              </span>
-              <span>
-                Total de venta<b>{ars.format(total)}</b>
-              </span>
-            </div>
-            <Actions close={close} busy={busy} />
-          </>
-        )}
+
+                <div className="sale-combobox-input-wrap">
+                  <Search />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    className="sale-combobox-input"
+                    placeholder="🔍 Buscar producto por nombre o categoría..."
+                    value={searchQuery}
+                    onFocus={() => setIsDropdownOpen(true)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setIsDropdownOpen(true);
+                    }}
+                  />
+                </div>
+
+                {/* Combobox Dropdown */}
+                {isDropdownOpen && (
+                  <div className="sale-combobox-dropdown">
+                    {filteredProducts.length ? (
+                      filteredProducts.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="sale-combobox-item"
+                          onClick={() => addProductToSale(p)}
+                        >
+                          <div className="sale-combobox-item-info">
+                            <span className="sale-combobox-item-name">{p.name}</span>
+                            <span className="sale-combobox-item-cat">{p.category || "Sin categoría"}</span>
+                          </div>
+                          <span className="sale-combobox-item-price">{ars.format(p.sale_price)}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="sale-combobox-empty">No encontramos productos con esa búsqueda.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Selected Products List */}
+              <div className="sale-products-list">
+                {lines.map((l, i) => {
+                  const selectedP = products.find((p) => p.id === l.product_id);
+                  if (!selectedP && !l.product_id) return null;
+                  const currentPrice = l.unit_price !== undefined ? l.unit_price : priceFor(selectedP, l.quantity);
+
+                  return (
+                    <div className="sale-item-row" key={i}>
+                      <div className="sale-item-info">
+                        <span className="sale-item-name">{selectedP?.name || "Seleccionar producto"}</span>
+                        <span className="sale-item-meta">{selectedP?.category || "Sin categoría"} · {ars.format(currentPrice)}/u</span>
+                      </div>
+
+                      <div className="sale-item-controls">
+                        {/* Stepper */}
+                        <div className="sale-qty-stepper">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newQty = Math.max(1, l.quantity - 1);
+                              setLines(
+                                lines.map((x, j) =>
+                                  j === i
+                                    ? { ...x, quantity: newQty, unit_price: priceFor(selectedP, newQty) }
+                                    : x
+                                )
+                              );
+                            }}
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min="1"
+                            value={l.quantity}
+                            onChange={(e) => {
+                              const newQty = Math.max(1, +e.target.value);
+                              setLines(
+                                lines.map((x, j) =>
+                                  j === i
+                                    ? { ...x, quantity: newQty, unit_price: priceFor(selectedP, newQty) }
+                                    : x
+                                )
+                              );
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newQty = l.quantity + 1;
+                              setLines(
+                                lines.map((x, j) =>
+                                  j === i
+                                    ? { ...x, quantity: newQty, unit_price: priceFor(selectedP, newQty) }
+                                    : x
+                                )
+                              );
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        {/* Editable Price Field */}
+                        <div className="sale-price-field" title="Precio por unidad">
+                          <span>$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={currentPrice}
+                            onChange={(e) => {
+                              const val = +e.target.value;
+                              setLines(
+                                lines.map((x, j) => (j === i ? { ...x, unit_price: val } : x))
+                              );
+                            }}
+                          />
+                        </div>
+
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          className="sale-remove-btn"
+                          title="Eliminar producto"
+                          onClick={() => setLines(lines.filter((_, j) => j !== i))}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  className="sale-add-another-btn"
+                  onClick={() => {
+                    setIsDropdownOpen(true);
+                    if (searchInputRef.current) searchInputRef.current.focus();
+                  }}
+                >
+                  <Plus className="w-4 h-4" /> Agregar otro producto
+                </button>
+              </div>
+
+              {/* Sale Info Form Grid */}
+              <div className="sale-info-grid">
+                <div className="sale-field-block">
+                  <label>Método de pago</label>
+                  <select name="method" defaultValue={item?.payment_method || "Mercado Pago"}>
+                    {methods.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sale-field-block">
+                  <label>Estado</label>
+                  <select name="status" defaultValue={item?.status || "completed"}>
+                    <option value="completed">Completada</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="cancelled">Cancelada</option>
+                  </select>
+                </div>
+
+                <div className="sale-field-block">
+                  <label>Fecha</label>
+                  <input
+                    type="date"
+                    name="date"
+                    defaultValue={item?.sold_at ? item.sold_at.slice(0, 10) : today()}
+                  />
+                </div>
+
+                <div className="sale-field-block">
+                  <label>Notas (opcional)</label>
+                  <input
+                    type="text"
+                    name="notes"
+                    placeholder="Agregar una nota opcional..."
+                    defaultValue={item?.notes || ""}
+                  />
+                </div>
+              </div>
+
+              {/* Clean Summary */}
+              <div className="sale-summary-clean">
+                <div className="sale-summary-left">
+                  <span className="sale-summary-count">
+                    {lines.reduce((sum, line) => sum + line.quantity, 0)}{" "}
+                    {lines.reduce((sum, line) => sum + line.quantity, 0) === 1 ? "producto" : "productos"}
+                  </span>
+                </div>
+                <div className="sale-summary-right">
+                  <span className="sale-summary-label">Total</span>
+                  <div className="sale-summary-total">{ars.format(total)}</div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="sale-modal-footer">
+          <button type="button" className="sale-cancel-btn" onClick={close}>
+            Cancelar
+          </button>
+          <button type="submit" className="sale-save-btn" disabled={busy}>
+            {busy ? <Loader2 className="w-4 h-4 spin" /> : "Guardar venta"}
+          </button>
+        </div>
       </form>
     </div>
   );
