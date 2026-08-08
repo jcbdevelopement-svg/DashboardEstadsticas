@@ -686,24 +686,120 @@ function ProductsPage({ items, open, reload, notify }: { items: Product[]; open:
   groups.forEach(([, products]) => products.sort((a, b) => a.name.localeCompare(b.name, "es")));
   const toggle = (category: string) => setCollapsed((current) => { const next = new Set(current); next.has(category) ? next.delete(category) : next.add(category); return next; });
   const importProducts = async (file?: File) => {
-    if (!file) return; setImporting(true);
+    if (!file) return;
+    setImporting(true);
     try {
       let rows: unknown[][] = [];
       if (/\.pdf$/i.test(file.name)) {
-        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs"); const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) { const page = await pdf.getPage(pageNumber), content = await page.getTextContent(); const lines = new Map<number, any[]>(); (content.items as any[]).forEach((item) => { const y = Math.round(item.transform[5] / 3) * 3; (lines.get(y) || lines.set(y, []).get(y)!).push(item); }); [...lines.entries()].sort((a, b) => b[0] - a[0]).forEach(([, line]) => rows.push(line.sort((a, b) => a.transform[4] - b.transform[4]).map((item) => item.str))); }
-      } else { const { default: readXlsxFile } = await import("read-excel-file/browser"); rows = await readXlsxFile(file) as unknown as unknown[][]; }
-      if (rows.length < 2) throw new Error("No se encontró una tabla con productos.");
-      const normalize = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-      const headers = rows[0].map(normalize), find = (...names: string[]) => headers.findIndex((header) => names.some((name) => header.includes(name)));
-      const nameCol = find("nombre", "producto", "name"), categoryCol = find("categoria", "category", "cat"), priceCol = find("precio venta", "precio", "price", "venta"), costCol = find("costo", "cost");
-      if (nameCol < 0 || priceCol < 0) throw new Error("El archivo necesita columnas Producto/Nombre y Precio.");
-      const existing = new Set(items.map((item) => `${normalize(item.name)}|${normalize(item.category)}`)), seen = new Set<string>();
-      const products = rows.slice(1).map((row) => ({ name: String(row[nameCol] ?? "").trim(), category: categoryCol >= 0 ? String(row[categoryCol] ?? "Sin categoría").trim() : "Sin categoría", sale_price: Number(String(row[priceCol] ?? 0).replace(/[^0-9,.-]/g, "").replace(",", ".")), cost_price: costCol >= 0 ? Number(String(row[costCol] ?? 0).replace(/[^0-9,.-]/g, "").replace(",", ".")) : 0, tier_prices: [] })).filter((product) => product.name && Number.isFinite(product.sale_price)).filter((product) => { const key = `${normalize(product.name)}|${normalize(product.category)}`; if (existing.has(key) || seen.has(key)) return false; seen.add(key); return true; });
-      const skipped = rows.length - 1 - products.length; if (!products.length) throw new Error("No hay productos nuevos; todos están duplicados o son inválidos.");
-      const { data: auth } = await supabase.auth.getUser(); const { error } = await supabase.from("products").insert(products.map((product) => ({ ...product, user_id: auth.user?.id }))); if (error) throw error;
-      await reload(); notify(`${products.length} productos importados. ${skipped} omitidos.`);
-    } catch (error) { notify(error instanceof Error ? error.message : "No se pudo importar el archivo."); } finally { setImporting(false); if (fileInput.current) fileInput.current.value = ""; }
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          const page = await pdf.getPage(pageNumber), content = await page.getTextContent();
+          const lines = new Map<number, any[]>();
+          (content.items as any[]).forEach((item) => {
+            const y = Math.round(item.transform[5] / 3) * 3;
+            (lines.get(y) || lines.set(y, []).get(y)!).push(item);
+          });
+          [...lines.entries()].sort((a, b) => b[0] - a[0]).forEach(([, line]) =>
+            rows.push(line.sort((a, b) => a.transform[4] - b.transform[4]).map((item) => item.str))
+          );
+        }
+      } else {
+        const XLSX = await import("xlsx");
+        const data = await file.arrayBuffer();
+        const workbook = XLSX.read(data, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
+      }
+
+      const validRows = rows.filter((row) => Array.isArray(row) && row.some((cell) => cell !== null && cell !== undefined && String(cell).trim() !== ""));
+      if (validRows.length < 2) throw new Error("El archivo Excel no contiene suficientes filas de datos.");
+
+      const normalize = (value: unknown) =>
+        String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+      let headerRowIndex = -1;
+      let nameCol = -1;
+      let priceCol = -1;
+      let categoryCol = -1;
+      let costCol = -1;
+
+      const nameSynonyms = ["nombre", "producto", "name", "item", "articulo", "descripcion", "desc", "detalle", "concepto", "titulo"];
+      const priceSynonyms = ["precio venta", "precio", "price", "venta", "p.venta", "pvp", "p.unitario", "precio unitario", "monto", "valor", "importe"];
+      const categorySynonyms = ["categoria", "category", "cat", "rubro", "tipo", "grupo", "seccion"];
+      const costSynonyms = ["costo", "cost", "compra", "precio costo", "p.costo", "costo unitario"];
+
+      for (let i = 0; i < Math.min(15, validRows.length); i++) {
+        const rowHeaders = validRows[i].map(normalize);
+        const findInRow = (...names: string[]) =>
+          rowHeaders.findIndex((header) => names.some((name) => header.includes(name)));
+
+        const nCol = findInRow(...nameSynonyms);
+        const pCol = findInRow(...priceSynonyms);
+
+        if (nCol >= 0 && pCol >= 0) {
+          headerRowIndex = i;
+          nameCol = nCol;
+          priceCol = pCol;
+          categoryCol = findInRow(...categorySynonyms);
+          costCol = findInRow(...costSynonyms);
+          break;
+        }
+      }
+
+      if (headerRowIndex < 0) {
+        nameCol = 0;
+        priceCol = 1;
+        headerRowIndex = 0;
+      }
+
+      const dataRows = validRows.slice(headerRowIndex + 1);
+      if (!dataRows.length) throw new Error("No se encontraron filas con productos después del encabezado.");
+
+      const existing = new Set(items.map((item) => `${normalize(item.name)}|${normalize(item.category)}`));
+      const seen = new Set<string>();
+
+      const productsToInsert = dataRows
+        .map((row) => {
+          const rawName = String(row[nameCol] ?? "").trim();
+          const rawCat = categoryCol >= 0 ? String(row[categoryCol] ?? "Sin categoría").trim() : "Sin categoría";
+          const rawPrice = Number(String(row[priceCol] ?? 0).replace(/[^0-9,.-]/g, "").replace(",", "."));
+          const rawCost = costCol >= 0 ? Number(String(row[costCol] ?? 0).replace(/[^0-9,.-]/g, "").replace(",", ".")) : 0;
+          return {
+            name: rawName,
+            category: rawCat || "Sin categoría",
+            sale_price: Number.isFinite(rawPrice) ? rawPrice : 0,
+            cost_price: Number.isFinite(rawCost) ? rawCost : 0,
+            tier_prices: [],
+          };
+        })
+        .filter((p) => p.name && p.name.toLowerCase() !== "nombre" && p.name.toLowerCase() !== "producto")
+        .filter((p) => {
+          const key = `${normalize(p.name)}|${normalize(p.category)}`;
+          if (existing.has(key) || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+      if (!productsToInsert.length) {
+        throw new Error("No hay productos nuevos para importar (o todos están duplicados/inválidos).");
+      }
+
+      const { data: auth } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("products")
+        .insert(productsToInsert.map((p) => ({ ...p, user_id: auth.user?.id })));
+
+      if (error) throw error;
+      await reload();
+      notify(`¡${productsToInsert.length} productos importados correctamente!`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "No se pudo importar el archivo.");
+    } finally {
+      setImporting(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
   };
   return <>
     <Toolbar q={q} setQ={setQ} button="Agregar producto" action={() => open()} extra={<><input ref={fileInput} hidden type="file" accept=".xlsx,.xls,.pdf" onChange={(e) => importProducts(e.target.files?.[0])} /><button onClick={() => fileInput.current?.click()} disabled={importing}>{importing ? <Loader2 className="spin" /> : <Download />}{importing ? "Importando..." : "Importar Excel/PDF"}</button></>} />
