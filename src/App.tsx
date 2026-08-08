@@ -1339,8 +1339,8 @@ function SaleModal({
           ?.unitPrice ?? product.sale_price
       : 0;
 
-  const [lines, setLines] = useState<Array<{ product_id: string; quantity: number; unit_price?: number }>>([
-    { product_id: products[0]?.id || "", quantity: 1, unit_price: products[0] ? priceFor(products[0], 1) : 0 },
+  const [lines, setLines] = useState<Array<{ product_id: string; quantity: number; unit_price?: number; unit_cost?: number }>>([
+    { product_id: products[0]?.id || "", quantity: 1, unit_price: products[0] ? priceFor(products[0], 1) : 0, unit_cost: products[0]?.cost_price ?? 0 },
   ]);
   const [busy, setBusy] = useState(false);
 
@@ -1369,9 +1369,10 @@ function SaleModal({
 
   const addProductToSale = (product: Product) => {
     const initialPrice = priceFor(product, 1);
+    const initialCost = product.cost_price ?? 0;
     setLines((prev) => {
       if (prev.length === 1 && !prev[0].product_id) {
-        return [{ product_id: product.id, quantity: 1, unit_price: initialPrice }];
+        return [{ product_id: product.id, quantity: 1, unit_price: initialPrice, unit_cost: initialCost }];
       }
       const existingIdx = prev.findIndex((l) => l.product_id === product.id);
       if (existingIdx >= 0) {
@@ -1381,7 +1382,7 @@ function SaleModal({
             : l
         );
       }
-      return [...prev, { product_id: product.id, quantity: 1, unit_price: initialPrice }];
+      return [...prev, { product_id: product.id, quantity: 1, unit_price: initialPrice, unit_cost: initialCost }];
     });
     setSearchQuery("");
     setIsDropdownOpen(false);
@@ -1420,6 +1421,7 @@ function SaleModal({
         product_id: l.product_id,
         quantity: l.quantity,
         unit_price: l.unit_price !== undefined && !isNaN(l.unit_price) ? l.unit_price : priceFor(p, l.quantity),
+        unit_cost: l.unit_cost !== undefined && !isNaN(l.unit_cost) ? l.unit_cost : (p?.cost_price ?? 0),
       };
     });
 
@@ -1527,12 +1529,13 @@ function SaleModal({
                   const selectedP = products.find((p) => p.id === l.product_id);
                   if (!selectedP && !l.product_id) return null;
                   const currentPrice = l.unit_price !== undefined ? l.unit_price : priceFor(selectedP, l.quantity);
+                  const currentCost = l.unit_cost !== undefined ? l.unit_cost : (selectedP?.cost_price ?? 0);
 
                   return (
                     <div className="sale-item-row" key={i}>
                       <div className="sale-item-info">
                         <span className="sale-item-name">{selectedP?.name || "Seleccionar producto"}</span>
-                        <span className="sale-item-meta">{selectedP?.category || "Sin categoría"} · {ars.format(currentPrice)}/u</span>
+                        <span className="sale-item-meta">{selectedP?.category || "Sin categoría"}</span>
                       </div>
 
                       <div className="sale-item-controls">
@@ -1585,8 +1588,9 @@ function SaleModal({
                           </button>
                         </div>
 
-                        {/* Editable Price Field */}
-                        <div className="sale-price-field" title="Precio por unidad">
+                        {/* Editable Sale Price Field */}
+                        <div className="sale-price-field" title="Precio de venta por unidad">
+                          <span style={{ fontSize: "10px", color: "#6b7280", fontWeight: 600 }}>Venta</span>
                           <span>$</span>
                           <input
                             type="number"
@@ -1597,6 +1601,24 @@ function SaleModal({
                               const val = +e.target.value;
                               setLines(
                                 lines.map((x, j) => (j === i ? { ...x, unit_price: val } : x))
+                              );
+                            }}
+                          />
+                        </div>
+
+                        {/* Editable Cost Price Field */}
+                        <div className="sale-price-field" title="Precio de compra / Costo por unidad">
+                          <span style={{ fontSize: "10px", color: "#6b7280", fontWeight: 600 }}>Costo</span>
+                          <span>$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={currentCost}
+                            onChange={(e) => {
+                              const val = +e.target.value;
+                              setLines(
+                                lines.map((x, j) => (j === i ? { ...x, unit_cost: val } : x))
                               );
                             }}
                           />
