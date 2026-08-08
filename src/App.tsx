@@ -43,6 +43,8 @@ import { supabase } from "./lib/supabase";
 import { Auth } from "./components/Auth";
 import { useFinancialData } from "./hooks/useFinancialData";
 import type { Expense, Payment, Product, Sale } from "./lib/types";
+import { exportFinancialPDF, exportFinancialExcel, exportTablePDF, exportTableExcel } from "./lib/exportUtils";
+
 type Page =
   | "Dashboard"
   | "Ventas"
@@ -345,8 +347,9 @@ function Content({
     return <Stats sales={sales} expenses={expenses} products={data.products} />;
   if (page === "Configuración")
     return <SettingsPage session={session} notify={notify} />;
-  return <Reports sales={sales} expenses={expenses} notify={notify} />;
+  return <Reports sales={sales} expenses={expenses} products={data.products} payments={data.payments} period={period} notify={notify} />;
 }
+
 
 const themeColors = ["#8b2cf5", "#2563eb", "#059669", "#dc2626", "#ea580c", "#db2777", "#111827"];
 const expenseCategoryLabels = ["📢 Publicidad y Marketing", "🖥️ Hosting", "🌐 Dominios", "🧩 Software y Herramientas", "📦 Productos / Mercadería", "🚚 Envíos y Logística", "🏭 Proveedores", "💳 Comisiones de Pago", "🛍️ Comisiones de Marketplace", "💼 Servicios Profesionales", "👥 Sueldos y Personal", "🏢 Alquiler", "💡 Servicios e Infraestructura", "📞 Telefonía e Internet", "🎨 Diseño y Contenido", "📸 Fotografía / Video", "🔄 Devoluciones y Reembolsos", "🧾 Impuestos", "🏦 Gastos Bancarios", "💸 Otros"];
@@ -849,52 +852,100 @@ function Stats({
 function Reports({
   sales,
   expenses,
+  products,
+  payments,
+  period,
   notify,
 }: {
   sales: Sale[];
   expenses: Expense[];
+  products: Product[];
+  payments: Payment[];
+  period: Period;
   notify: (s: string) => void;
 }) {
-  const t = totals(sales, expenses),
-    rows = [
-      ["Ventas", t.revenue],
-      ["Costos", t.cost],
-      ["Gastos", t.expense],
-      ["Ganancia bruta", t.gross],
-      ["Ganancia neta", t.net],
-      ["Margen", t.margin],
-    ];
+  const t = totals(sales, expenses);
+  const periodLabel =
+    period === "today"
+      ? "Hoy"
+      : period === "7"
+        ? "Últimos 7 días"
+        : period === "15"
+          ? "Últimos 15 días"
+          : "Últimos 30 días";
+
+  const rows: [string, number][] = [
+    ["Ventas", t.revenue],
+    ["Costos", t.cost],
+    ["Gastos", t.expense],
+    ["Ganancia bruta", t.gross],
+    ["Ganancia neta", t.net],
+    ["Margen", t.margin],
+  ];
+
   async function exportPdf() {
     try {
-      const [{ jsPDF }, { default: autoTable }, brandMark] = await Promise.all([import("jspdf"), import("jspdf-autotable"), loadBrandMark()]);
-      const doc = new jsPDF({ unit: "mm", format: "a4" });
-      doc.setProperties({ title: "Reporte financiero", author: "JCB Developement" });
-      doc.setFillColor(116, 35, 204); doc.rect(0, 0, 210, 36, "F");
-      doc.setTextColor(255); doc.setFontSize(20); doc.text("Reporte financiero", 14, 17); doc.setFontSize(9); doc.text(`Generado el ${date(new Date().toISOString())}`, 14, 25);
-      autoTable(doc, { startY: 48, head: [["Indicador", "Resultado"]], body: rows.map(([name, value]) => [String(name), name === "Margen" ? `${Number(value).toFixed(1)}%` : ars.format(Number(value))]), theme: "grid", styles: { fontSize: 10, cellPadding: 5 }, headStyles: { fillColor: [116, 35, 204] }, alternateRowStyles: { fillColor: [248, 245, 252] } });
-      addPdfBranding(doc, brandMark);
-      doc.setFontSize(7); doc.setTextColor(120); doc.text("JCB Developement - Documento de marca", 105, 291, { align: "center" });
-      doc.save("reporte-financiero-jb.pdf"); notify("Reporte PDF exportado con marca de agua.");
-    } catch (error) { notify(`No se pudo crear el PDF: ${error instanceof Error ? error.message : "error desconocido"}`); }
+      await exportFinancialPDF({
+        sales,
+        products,
+        expenses,
+        payments,
+        totals: t,
+        periodLabel,
+      });
+      notify("Reporte PDF profesional exportado con marca JB.");
+    } catch (error) {
+      notify(
+        `No se pudo crear el PDF: ${error instanceof Error ? error.message : "error desconocido"}`,
+      );
+    }
   }
+
+  function exportExcel() {
+    try {
+      exportFinancialExcel({
+        sales,
+        products,
+        expenses,
+        payments,
+        totals: t,
+        periodLabel,
+      });
+      notify("Reporte completo en Excel (.xlsx) exportado.");
+    } catch (error) {
+      notify(
+        `No se pudo exportar a Excel: ${error instanceof Error ? error.message : "error desconocido"}`,
+      );
+    }
+  }
+
   return (
     <>
       <section className="report-hero panel">
         <div>
-          <span>REPORTE FINANCIERO</span>
-          <h2>Resumen del período</h2>
-          <p>Información obtenida directamente de Supabase.</p>
+          <span>REPORTE FINANCIERO INTEGRAL</span>
+          <h2>Resumen del Período ({periodLabel})</h2>
+          <p>Información detallada lista para presentar o analizar en hojas de cálculo.</p>
         </div>
-        <div className="export">
+        <div className="export" style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
           <button className="primary" onClick={exportPdf}>
             <Download />
-            Descargar PDF con marca JB
+            Descargar PDF Premium
+          </button>
+          <button
+            type="button"
+            className="row-action"
+            style={{ padding: "10px 16px", background: "var(--card-bg, #fff)", border: "1px solid var(--border)", borderRadius: "8px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 600 }}
+            onClick={exportExcel}
+          >
+            <FileBarChart />
+            Exportar Excel (.xlsx)
           </button>
         </div>
       </section>
       <section className="report-grid">
         {rows.map(([n, v]) => (
-          <article>
+          <article key={n}>
             <span>{n}</span>
             <b>
               {n === "Margen"
@@ -907,6 +958,7 @@ function Reports({
     </>
   );
 }
+
 function DataModal({
   modal,
   products,
