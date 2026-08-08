@@ -1592,8 +1592,8 @@ function SaleModal({
 
                         {/* Editable Sale Price Field */}
                         <div className="sale-price-field" title="Precio de venta por unidad">
-                          <span style={{ fontSize: "10px", color: "#6b7280", fontWeight: 600 }}>Venta</span>
-                          <span>$</span>
+                          <span className="sale-price-tag">Venta</span>
+                          <span className="sale-currency-symbol">$</span>
                           <input
                             type="number"
                             min="0"
@@ -1610,8 +1610,8 @@ function SaleModal({
 
                         {/* Editable Cost Price Field */}
                         <div className="sale-price-field" title="Precio de compra / Costo por unidad">
-                          <span style={{ fontSize: "10px", color: "#6b7280", fontWeight: 600 }}>Costo</span>
-                          <span>$</span>
+                          <span className="sale-price-tag">Costo</span>
+                          <span className="sale-currency-symbol">$</span>
                           <input
                             type="number"
                             min="0"
