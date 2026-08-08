@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
 import { Mail, Lock, UserRound, Eye, EyeClosed, ArrowRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -17,6 +17,15 @@ export function Auth() {
   const [focusedInput, setFocusedInput] = useState<'email' | 'password' | 'name' | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    document.documentElement.classList.add('auth-active')
+    document.body.classList.add('auth-active')
+    return () => {
+      document.documentElement.classList.remove('auth-active')
+      document.body.classList.remove('auth-active')
+    }
+  }, [])
 
   // 3D Tilt Card Effects
   const mouseX = useMotionValue(0)
