@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
-import { Mail, Lock, UserRound, Eye, EyeClosed, ArrowRight, ChevronLeft, Loader2 } from 'lucide-react'
+import { Mail, Lock, UserRound, Eye, EyeClosed, ArrowRight, ChevronLeft, Loader2, Key, Settings, X, Check } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 const productionUrl = 'https://dashboard-estadisticas-7pn.pages.dev'
@@ -18,6 +18,11 @@ export function Auth() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
+  // Supabase Configuration Modal State
+  const [showKeyModal, setShowKeyModal] = useState(false)
+  const [customKey, setCustomKey] = useState('')
+  const [customUrl, setCustomUrl] = useState('')
+
   useEffect(() => {
     document.documentElement.classList.add('auth-active')
     document.body.classList.add('auth-active')
@@ -25,6 +30,12 @@ export function Auth() {
       document.documentElement.classList.remove('auth-active')
       document.body.classList.remove('auth-active')
     }
+  }, [])
+
+  // Load existing localStorage keys if present
+  useEffect(() => {
+    setCustomKey(localStorage.getItem('jcb_supabase_key') || '')
+    setCustomUrl(localStorage.getItem('jcb_supabase_url') || '')
   }, [])
 
   // 3D Tilt Card Effects
@@ -64,16 +75,33 @@ export function Auth() {
       }))
     }
 
-    setMessage(
-      error
-        ? error.message
-        : mode === 'reset'
+    if (error) {
+      if (error.message.includes('Invalid API key') || error.message.includes('apiKey')) {
+        setMessage('🔑 La clave API de Supabase no es válida. Hacé clic en "Configurar Supabase" para ingresar tu clave real.')
+      } else {
+        setMessage(error.message)
+      }
+    } else {
+      setMessage(
+        mode === 'reset'
           ? 'Revisá tu correo para continuar.'
           : mode === 'register'
             ? 'Cuenta creada. Revisá tu correo para confirmar tu email.'
             : '',
-    )
+      )
+    }
     setBusy(false)
+  }
+
+  function saveSupabaseConfig(e: FormEvent) {
+    e.preventDefault()
+    if (customKey.trim()) {
+      localStorage.setItem('jcb_supabase_key', customKey.trim())
+    }
+    if (customUrl.trim()) {
+      localStorage.setItem('jcb_supabase_url', customUrl.trim())
+    }
+    window.location.reload()
   }
 
   return (
@@ -94,6 +122,17 @@ export function Auth() {
         animate={{ opacity: [0.25, 0.45, 0.25], scale: [1, 1.08, 1] }}
         transition={{ duration: 6, repeat: Infinity, repeatType: "mirror", delay: 1 }}
       />
+
+      {/* Supabase Config Gear Button in Top Corner */}
+      <button
+        type="button"
+        title="Configurar Supabase"
+        className="auth-config-floating-btn"
+        onClick={() => setShowKeyModal(true)}
+      >
+        <Key className="w-4 h-4" />
+        <span>Configurar Supabase</span>
+      </button>
 
       {/* Main 3D Container */}
       <motion.div
@@ -287,6 +326,65 @@ export function Auth() {
           </div>
         </motion.div>
       </motion.div>
+
+      {/* Supabase Key Modal */}
+      {showKeyModal && (
+        <div className="auth-modal-backdrop">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="auth-modal-card"
+          >
+            <div className="auth-modal-header">
+              <h3><Key className="w-5 h-5 inline mr-2 text-purple-400" /> Configurar Supabase</h3>
+              <button type="button" onClick={() => setShowKeyModal(false)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="auth-modal-desc">
+              Ingresá tu <b>VITE_SUPABASE_ANON_KEY</b> de Supabase (obtenida en Supabase Dashboard -&gt; Settings -&gt; API) para conectar la app a tu proyecto.
+            </p>
+            <form onSubmit={saveSupabaseConfig} className="auth-form-space">
+              <label className="auth-field-label">
+                <span>Supabase Anon Key (Public Key)</span>
+                <input
+                  required
+                  type="text"
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                  value={customKey}
+                  onChange={(e) => setCustomKey(e.target.value)}
+                  className="auth-modal-input"
+                />
+              </label>
+
+              <label className="auth-field-label">
+                <span>Supabase URL (Opcional)</span>
+                <input
+                  type="text"
+                  placeholder="https://tu-proyecto.supabase.co"
+                  value={customUrl}
+                  onChange={(e) => setCustomUrl(e.target.value)}
+                  className="auth-modal-input"
+                />
+              </label>
+
+              <div className="auth-modal-actions">
+                <button
+                  type="button"
+                  className="auth-modal-cancel"
+                  onClick={() => setShowKeyModal(false)}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="auth-modal-submit">
+                  <Check className="w-4 h-4 inline mr-1" /> Guardar y Conectar
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }
