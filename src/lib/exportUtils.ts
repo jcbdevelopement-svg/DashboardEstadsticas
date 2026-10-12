@@ -1,6 +1,3 @@
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
 import type { Expense, Payment, Product, Sale } from "./types";
 
 const currencyFormatter = (value: number) => {
@@ -40,7 +37,7 @@ async function loadBrandMark(): Promise<string | null> {
   }
 }
 
-function applyDocumentHeaderAndWatermark(doc: jsPDF, mark: string | null, title: string, subtitle: string) {
+function applyDocumentHeaderAndWatermark(doc: any, mark: string | null, title: string, subtitle: string) {
   const totalPages = doc.getNumberOfPages();
   const brandColor: [number, number, number] = [139, 44, 245]; // #8b2cf5
 
@@ -100,7 +97,11 @@ export interface FinancialExportData {
  * Generates a complete, beautiful multi-section PDF report
  */
 export async function exportFinancialPDF(data: FinancialExportData) {
-  const brandMark = await loadBrandMark();
+  const [{ jsPDF }, { default: autoTable }, brandMark] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+    loadBrandMark(),
+  ]);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   doc.setProperties({
     title: `Reporte Financiero - ${data.periodLabel}`,
@@ -259,7 +260,8 @@ export async function exportFinancialPDF(data: FinancialExportData) {
 /**
  * Generates a full multi-sheet Excel file (.xlsx)
  */
-export function exportFinancialExcel(data: FinancialExportData) {
+export async function exportFinancialExcel(data: FinancialExportData) {
+  const XLSX = await import("xlsx");
   const wb = XLSX.utils.book_new();
   const { totals, sales, products, expenses, payments, periodLabel } = data;
 
@@ -349,7 +351,11 @@ export function exportFinancialExcel(data: FinancialExportData) {
  * Single table PDF export helper
  */
 export async function exportTablePDF(title: string, headers: string[], rows: (string | number)[][], fileName: string) {
-  const brandMark = await loadBrandMark();
+  const [{ jsPDF }, { default: autoTable }, brandMark] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+    loadBrandMark(),
+  ]);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
 
   autoTable(doc, {
@@ -374,7 +380,8 @@ export async function exportTablePDF(title: string, headers: string[], rows: (st
 /**
  * Single table Excel export helper
  */
-export function exportTableExcel(sheetName: string, headers: string[], rows: (string | number)[][], fileName: string) {
+export async function exportTableExcel(sheetName: string, headers: string[], rows: (string | number)[][], fileName: string) {
+  const XLSX = await import("xlsx");
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   XLSX.utils.book_append_sheet(wb, ws, sheetName);

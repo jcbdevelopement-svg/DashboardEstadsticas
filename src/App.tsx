@@ -216,7 +216,34 @@ export default function App() {
                 onClick={() => setModal({ kind: "sale" })}
               >
                 <Plus />
-                Agregar venta
+                Nueva venta
+              </button>
+            )}
+            {page === "Productos" && (
+              <button
+                className="primary"
+                onClick={() => setModal({ kind: "product" })}
+              >
+                <Plus />
+                Nuevo producto
+              </button>
+            )}
+            {page === "Gastos" && (
+              <button
+                className="primary"
+                onClick={() => setModal({ kind: "expense" })}
+              >
+                <Plus />
+                Nuevo gasto
+              </button>
+            )}
+            {page === "Pagos" && (
+              <button
+                className="primary"
+                onClick={() => setModal({ kind: "payment" })}
+              >
+                <Plus />
+                Nuevo pago
               </button>
             )}
           </div>
@@ -577,11 +604,11 @@ function Dashboard({
   return (
     <>
       <section className="metric-grid">
-        <Metric title="Ventas" value={ars.format(t.revenue)} tone="brand" />
-        <Metric title="Ganancia neta" value={ars.format(t.net)} tone="green" />
-        <Metric title="Costos" value={ars.format(t.cost)} tone="red" />
-        <Metric title="Gastos" value={ars.format(t.expense)} tone="orange" />
-        <Metric title="Margen" value={t.margin.toFixed(1) + "%"} tone="brand" />
+        <Metric title="Ventas" value={ars.format(t.revenue)} tone="brand" icon={ShoppingBag} subtext="Ingresos brutos" />
+        <Metric title="Ganancia neta" value={ars.format(t.net)} tone="green" icon={CircleDollarSign} subtext="Rentabilidad real" />
+        <Metric title="Costos" value={ars.format(t.cost)} tone="red" icon={Boxes} subtext="Costo de productos" />
+        <Metric title="Gastos" value={ars.format(t.expense)} tone="orange" icon={Receipt} subtext="Gastos operativos" />
+        <Metric title="Margen" value={t.margin.toFixed(1) + "%"} tone="brand" icon={BarChart3} subtext="Margen sobre venta" />
       </section>
       <section className="panel chart-panel">
         <div className="panel-head">
@@ -609,12 +636,12 @@ function Dashboard({
             <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={chart}>
                 <CartesianGrid vertical={false} stroke="#edf0f3" />
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Tooltip formatter={(v) => ars.format(Number(v))} />
-                <Area dataKey="sales" stroke="#8b2cf5" fill="#8b2cf522" />
-                <Area dataKey="cost" stroke="#aeb2bb" fill="transparent" />
-                <Area dataKey="profit" stroke="#6120aa" fill="transparent" />
+                <XAxis dataKey="day" stroke="#94a3b8" fontSize={11} tickLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} tickFormatter={(v) => ars.format(Number(v))} />
+                <Tooltip formatter={(v) => [ars.format(Number(v)), ""]} contentStyle={{ borderRadius: "10px", border: "1px solid #e2e8f0", boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }} />
+                <Area dataKey="sales" name="Ventas" stroke="#8b2cf5" strokeWidth={2} fill="#8b2cf522" />
+                <Area dataKey="cost" name="Costos" stroke="#94a3b8" strokeWidth={2} fill="transparent" />
+                <Area dataKey="profit" name="Ganancia" stroke="#10b981" strokeWidth={2} fill="#10b98115" />
               </AreaChart>
             </ResponsiveContainer>
           </>
@@ -637,17 +664,31 @@ function Dashboard({
     </>
   );
 }
-function Metric({ title, value, tone }: { title: string; value: string; tone?: "brand" | "green" | "red" | "orange" }) {
+function Metric({
+  title,
+  value,
+  tone,
+  icon: Icon = CircleDollarSign,
+  subtext = "Datos del período",
+}: {
+  title: string;
+  value: string;
+  tone?: "brand" | "green" | "red" | "orange";
+  icon?: any;
+  subtext?: string;
+}) {
   return (
     <article className={`metric${tone ? ` metric-${tone}` : ""}`}>
       <div className="metric-top">
         <span>{title}</span>
-        <CircleDollarSign />
+        <div className={`metric-icon-wrap ${tone || "brand"}`}>
+          <Icon className="w-4 h-4" />
+        </div>
       </div>
       <strong>{value}</strong>
       <div className="change good">
-        <ArrowUpRight />
-        <span>Datos del período</span>
+        <ArrowUpRight className="w-3.5 h-3.5" />
+        <span>{subtext}</span>
       </div>
     </article>
   );
@@ -984,10 +1025,10 @@ function Stats({
   return (
     <>
       <section className="metric-grid four">
-        <Metric title="Ventas" value={ars.format(t.revenue)} />
-        <Metric title="Ganancia neta" value={ars.format(t.net)} />
-        <Metric title="Costos" value={ars.format(t.cost)} />
-        <Metric title="Margen" value={t.margin.toFixed(1) + "%"} />
+        <Metric title="Ventas" value={ars.format(t.revenue)} tone="brand" icon={ShoppingBag} subtext="Ingresos brutos" />
+        <Metric title="Ganancia neta" value={ars.format(t.net)} tone="green" icon={CircleDollarSign} subtext="Rentabilidad real" />
+        <Metric title="Costos" value={ars.format(t.cost)} tone="red" icon={Boxes} subtext="Costo de productos" />
+        <Metric title="Margen" value={t.margin.toFixed(1) + "%"} tone="brand" icon={BarChart3} subtext="Margen sobre venta" />
       </section>
       <section className="two-cols">
         <section className="panel">
@@ -1089,9 +1130,9 @@ function Reports({
     }
   }
 
-  function exportExcel() {
+  async function exportExcel() {
     try {
-      exportFinancialExcel({
+      await exportFinancialExcel({
         sales,
         products,
         expenses,
