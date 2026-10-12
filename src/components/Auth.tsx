@@ -53,7 +53,12 @@ export function Auth({ onBypass }: { onBypass?: () => void }) {
         )
       }
     } catch (err: any) {
-      setMessage(err?.message || 'Error de conexión')
+      const msg = err?.message || ''
+      if (msg.includes('fetch') || msg.includes('NetworkError') || msg.includes('Failed to fetch')) {
+        setMessage('No se pudo conectar con la base de datos de Supabase. Podés pulsar abajo en "Entrar directo al panel" para ingresar al sistema.')
+      } else {
+        setMessage(msg || 'Error de conexión')
+      }
     } finally {
       setBusy(false)
     }
