@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import type { Expense, Payment, Product, Sale } from "../lib/types";
-export function useFinancialData() {
+export function useFinancialData(enabled = true) {
   const [products, setProducts] = useState<Product[]>([]),
     [sales, setSales] = useState<Sale[]>([]),
     [expenses, setExpenses] = useState<Expense[]>([]),
@@ -9,6 +9,10 @@ export function useFinancialData() {
     [loading, setLoading] = useState(true),
     [error, setError] = useState("");
   const reload = useCallback(async () => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     const [p, s, e, pa] = await Promise.all([
@@ -48,7 +52,7 @@ export function useFinancialData() {
     setExpenses((e.data || []) as Expense[]);
     setPayments((pa.data || []) as Payment[]);
     setLoading(false);
-  }, []);
+  }, [enabled]);
   useEffect(() => {
     reload();
   }, [reload]);

@@ -1,6 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
-import { Mail, Lock, UserRound, Eye, EyeClosed, ArrowRight, ChevronLeft, Loader2 } from 'lucide-react'
+import { Mail, Lock, UserRound, Eye, EyeClosed, ArrowRight, ChevronLeft, Loader2, ShieldCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 const productionUrl = 'https://dashboard-estadisticas-7pn.pages.dev'
@@ -14,7 +13,6 @@ export function Auth() {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [focusedInput, setFocusedInput] = useState<'email' | 'password' | 'name' | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -26,23 +24,6 @@ export function Auth() {
       document.body.classList.remove('auth-active')
     }
   }, [])
-
-  // 3D Tilt Card Effects
-  const mouseX = useMotionValue(0)
-  const mouseY = useMotionValue(0)
-  const rotateX = useTransform(mouseY, [-300, 300], [10, -10])
-  const rotateY = useTransform(mouseX, [-300, 300], [-10, 10])
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    mouseX.set(e.clientX - rect.left - rect.width / 2)
-    mouseY.set(e.clientY - rect.top - rect.height / 2)
-  }
-
-  const handleMouseLeave = () => {
-    mouseX.set(0)
-    mouseY.set(0)
-  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -79,216 +60,152 @@ export function Auth() {
   }
 
   return (
-    <div className="auth-custom-wrapper">
-      {/* Dynamic Ambient Background */}
-      <div className="auth-bg-gradient" />
-      <div className="auth-bg-noise" />
+    <div className="auth-clean-shell">
+      <div className="auth-clean-card">
+        {/* Top Header */}
+        <div className="auth-clean-header">
+          {mode === 'reset' && (
+            <button type="button" className="auth-clean-back" onClick={() => setMode('login')}>
+              <ChevronLeft className="w-4 h-4" /> Volver
+            </button>
+          )}
 
-      {/* Glow Orbs */}
-      <div className="auth-glow-top" />
-      <motion.div
-        className="auth-glow-pulse-top"
-        animate={{ opacity: [0.2, 0.4, 0.2], scale: [0.98, 1.03, 0.98] }}
-        transition={{ duration: 7, repeat: Infinity, repeatType: "mirror" }}
-      />
-      <motion.div
-        className="auth-glow-pulse-bottom"
-        animate={{ opacity: [0.25, 0.45, 0.25], scale: [1, 1.08, 1] }}
-        transition={{ duration: 6, repeat: Infinity, repeatType: "mirror", delay: 1 }}
-      />
+          <div className="auth-clean-brand">
+            <img src="/brand/jcb-wordmark.png" alt="JCB Developement" className="auth-clean-logo" />
+          </div>
 
-      {/* Main 3D Container */}
-      <motion.div
-        initial={{ opacity: 0, y: 25 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
-        className="auth-card-container"
-        style={{ perspective: 1500 }}
-      >
-        <motion.div
-          className="auth-tilt-wrapper"
-          style={{ rotateX, rotateY }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          whileHover={{ z: 12 }}
-        >
-          <div className="auth-card-group">
-            {/* Animated Traveling Light Beams */}
-            <div className="auth-light-beams">
-              <motion.div
-                className="beam-top"
-                animate={{ left: ["-50%", "100%"], opacity: [0.3, 0.8, 0.3] }}
-                transition={{ duration: 2.5, ease: "easeInOut", repeat: Infinity, repeatDelay: 1 }}
-              />
-              <motion.div
-                className="beam-right"
-                animate={{ top: ["-50%", "100%"], opacity: [0.3, 0.8, 0.3] }}
-                transition={{ duration: 2.5, ease: "easeInOut", repeat: Infinity, repeatDelay: 1, delay: 0.6 }}
-              />
-              <motion.div
-                className="beam-bottom"
-                animate={{ right: ["-50%", "100%"], opacity: [0.3, 0.8, 0.3] }}
-                transition={{ duration: 2.5, ease: "easeInOut", repeat: Infinity, repeatDelay: 1, delay: 1.2 }}
-              />
-              <motion.div
-                className="beam-left"
-                animate={{ bottom: ["-50%", "100%"], opacity: [0.3, 0.8, 0.3] }}
-                transition={{ duration: 2.5, ease: "easeInOut", repeat: Infinity, repeatDelay: 1, delay: 1.8 }}
+          <h1 className="auth-clean-title">
+            {mode === 'login' ? 'Iniciar sesión' : mode === 'register' ? 'Crear cuenta' : 'Recuperar contraseña'}
+          </h1>
+          <p className="auth-clean-subtitle">
+            {mode === 'login'
+              ? 'Ingresá tus credenciales para acceder al panel.'
+              : mode === 'register'
+                ? 'Completá tus datos para comenzar a administrar.'
+                : 'Ingresá tu correo para recibir las instrucciones.'}
+          </p>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={submit} className="auth-clean-form">
+          {mode === 'register' && (
+            <div className="auth-field">
+              <label htmlFor="auth-name">Nombre completo</label>
+              <div className="auth-input-wrapper">
+                <UserRound className="auth-field-icon" />
+                <input
+                  id="auth-name"
+                  required
+                  type="text"
+                  placeholder="Ej. Juan Pérez"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="auth-field">
+            <label htmlFor="auth-email">Correo electrónico</label>
+            <div className="auth-input-wrapper">
+              <Mail className="auth-field-icon" />
+              <input
+                id="auth-email"
+                required
+                type="email"
+                placeholder="ejemplo@empresa.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
               />
             </div>
+          </div>
 
-            {/* Glass Card */}
-            <div className="auth-glass-card">
-              {/* Header / Brand */}
-              <div className="auth-header">
-                {mode === 'reset' && (
-                  <button type="button" className="auth-back-btn" onClick={() => setMode('login')}>
-                    <ChevronLeft className="w-4 h-4" /> Volver
-                  </button>
-                )}
-
-                <motion.div
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: "spring", duration: 0.7 }}
-                  className="auth-brand-logo"
-                >
-                  <img src="/brand/jcb-wordmark.png" alt="JCB Developement" className="auth-logo-img" />
-                </motion.div>
-
-                <motion.h1
-                  key={`title-${mode}`}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  {mode === 'login' ? 'Bienvenido' : mode === 'register' ? 'Crear cuenta' : 'Recuperar acceso'}
-                </motion.h1>
-
-                <motion.p
-                  key={`desc-${mode}`}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3, delay: 0.1 }}
-                >
-                  {mode === 'login'
-                    ? 'Ingresá para administrar tu negocio.'
-                    : mode === 'register'
-                      ? 'Empezá a controlar tus finanzas.'
-                      : 'Te enviaremos un enlace de recuperación.'}
-                </motion.p>
-              </div>
-
-              {/* Form */}
-              <form onSubmit={submit} className="auth-form-space">
-                {mode === 'register' && (
-                  <div className={`auth-input-group ${focusedInput === 'name' ? 'focused' : ''}`}>
-                    <UserRound className={`auth-input-icon ${focusedInput === 'name' ? 'active' : ''}`} />
-                    <input
-                      required
-                      type="text"
-                      placeholder="Tu nombre"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      onFocus={() => setFocusedInput('name')}
-                      onBlur={() => setFocusedInput(null)}
-                    />
-                  </div>
-                )}
-
-                <div className={`auth-input-group ${focusedInput === 'email' ? 'focused' : ''}`}>
-                  <Mail className={`auth-input-icon ${focusedInput === 'email' ? 'active' : ''}`} />
-                  <input
-                    required
-                    type="email"
-                    placeholder="nombre@empresa.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onFocus={() => setFocusedInput('email')}
-                    onBlur={() => setFocusedInput(null)}
-                  />
-                </div>
-
-                {mode !== 'reset' && (
-                  <div className={`auth-input-group ${focusedInput === 'password' ? 'focused' : ''}`}>
-                    <Lock className={`auth-input-icon ${focusedInput === 'password' ? 'active' : ''}`} />
-                    <input
-                      required
-                      minLength={6}
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Contraseña (mín. 6 caracteres)"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      onFocus={() => setFocusedInput('password')}
-                      onBlur={() => setFocusedInput(null)}
-                    />
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      className="auth-eye-btn"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? <Eye className="w-4 h-4" /> : <EyeClosed className="w-4 h-4" />}
-                    </button>
-                  </div>
-                )}
-
-                {message && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="auth-feedback-msg"
-                  >
-                    {message}
-                  </motion.div>
-                )}
-
-                {/* Submit Button */}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  type="submit"
-                  disabled={busy}
-                  className="auth-primary-btn"
-                >
-                  <AnimatePresence mode="wait">
-                    {busy ? (
-                      <motion.span key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <Loader2 className="w-4 h-4 spin inline" />
-                      </motion.span>
-                    ) : (
-                      <motion.span key="btn-text" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-center">
-                        {mode === 'login' ? 'Ingresar' : mode === 'register' ? 'Registrarme' : 'Enviar enlace'}
-                        <ArrowRight className="w-4 h-4 ml-1.5 inline" />
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </motion.button>
-
-                {/* Sub-links */}
+          {mode !== 'reset' && (
+            <div className="auth-field">
+              <div className="auth-field-row">
+                <label htmlFor="auth-password">Contraseña</label>
                 {mode === 'login' && (
-                  <button type="button" className="auth-forgot-link" onClick={() => setMode('reset')}>
+                  <button
+                    type="button"
+                    className="auth-link-subtle"
+                    onClick={() => {
+                      setMessage('')
+                      setMode('reset')
+                    }}
+                  >
                     ¿Olvidaste tu contraseña?
                   </button>
                 )}
-
-                <div className="auth-switch-footer">
-                  {mode === 'register' ? '¿Ya tenés cuenta?' : '¿No tenés cuenta?'}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMessage('')
-                      setMode(mode === 'register' ? 'login' : 'register')
-                    }}
-                  >
-                    {mode === 'register' ? 'Ingresar' : 'Registrarme'}
-                  </button>
-                </div>
-              </form>
+              </div>
+              <div className="auth-input-wrapper">
+                <Lock className="auth-field-icon" />
+                <input
+                  id="auth-password"
+                  required
+                  minLength={6}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="auth-eye-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                >
+                  {showPassword ? <Eye className="w-4 h-4" /> : <EyeClosed className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
+          )}
+
+          {message && (
+            <div className="auth-clean-alert" role="alert">
+              {message}
+            </div>
+          )}
+
+          {/* Action button */}
+          <button type="submit" disabled={busy} className="auth-clean-submit">
+            {busy ? (
+              <span className="auth-btn-flex">
+                <Loader2 className="w-4 h-4 spin" /> Procesando...
+              </span>
+            ) : (
+              <span className="auth-btn-flex">
+                {mode === 'login' ? 'Ingresar al sistema' : mode === 'register' ? 'Registrarme' : 'Enviar instrucciones'}
+                <ArrowRight className="w-4 h-4 ml-1.5" />
+              </span>
+            )}
+          </button>
+
+          {/* Mode switch footer */}
+          <div className="auth-clean-footer">
+            <span>
+              {mode === 'register' ? '¿Ya tenés una cuenta?' : '¿No tenés una cuenta todavía?'}
+            </span>
+            <button
+              type="button"
+              className="auth-switch-btn"
+              onClick={() => {
+                setMessage('')
+                setMode(mode === 'register' ? 'login' : 'register')
+              }}
+            >
+              {mode === 'register' ? 'Iniciá sesión' : 'Registrate aquí'}
+            </button>
           </div>
-        </motion.div>
-      </motion.div>
+        </form>
+
+        <div className="auth-security-badge">
+          <ShieldCheck className="w-3.5 h-3.5" /> Conexión segura con cifrado SSL
+        </div>
+      </div>
     </div>
   )
 }

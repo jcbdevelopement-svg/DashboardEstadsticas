@@ -106,7 +106,7 @@ export default function App() {
     [modal, setModal] = useState<Modal>(null),
     [period, setPeriod] = useState<Period>("30"),
     [toast, setToast] = useState("");
-  const data = useFinancialData();
+  const data = useFinancialData(Boolean(session));
   useEffect(() => {
     const color = localStorage.getItem("jcb-brand-color") || "#8b2cf5";
     document.documentElement.style.setProperty("--brand", color);
@@ -115,7 +115,7 @@ export default function App() {
     let mounted = true;
     const timer = setTimeout(() => {
       if (mounted) setSession((s) => (s === undefined ? null : s));
-    }, 1500);
+    }, 400);
 
     supabase.auth
       .getSession()
